@@ -1,0 +1,17 @@
+services:
+  briefly:
+    build: .
+    container_name: briefly-app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/briefly.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

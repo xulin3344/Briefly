@@ -1,0 +1,12 @@
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+sqlalchemy==2.0.25
+feedparser==6.0.10
+apscheduler==3.10.4
+openai==1.10.0
+python-dotenv==1.0.0
+httpx==0.26.0
+pydantic==2.5.3
+pydantic-core==2.14.6; python_version >= "3.8"
+pydantic-settings
+aiosqlite

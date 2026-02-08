@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Briefly - 配置</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .config-scale-70 {
+            transform: scale(0.7);
+            transform-origin: top left;
+            width: 142.86%;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 顶部导航 -->
+    <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="index.html" class="text-2xl font-bold text-gray-900 hover:text-blue-600">
+                        ← Briefly
+                    </a>
+                    <span class="ml-4 text-lg text-gray-600">配置</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button onclick="saveAll()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                        保存更改
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 config-scale-70">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- RSS 源管理 -->
+            <div class="bg-white rounded-lg shadow-sm p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-gray-900">RSS 源管理</h2>
+                    <button onclick="showAddSourceModal()" class="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                        添加源
+                    </button>
+                </div>
+                
+                <!-- RSS 源列表 -->
+                <div id="sources-list" class="space-y-2">
+                    <!-- 初始为空，加载后动态更新 -->
+                </div>
+            </div>
+
+            <!-- 关键词管理 -->
+            <div class="bg-white rounded-lg shadow-sm p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-gray-900">关键词过滤</h2>
+                    <button onclick="showAddKeywordModal()" class="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                        添加关键词
+                    </button>
+                </div>
+                
+                <p class="text-xs text-gray-500 mb-3">
+                    设置关键词后，包含任一关键词的文章将被标记为「已过滤」，不会出现在默认文章列表中。
+                </p>
+                
+                <!-- 关键词列表 -->
+                <div id="keywords-list" class="space-y-2">
+                    <!-- 初始为空，加载后动态更新 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 系统状态 -->
+        <div class="mt-6 bg-white rounded-lg shadow-sm p-4">
+            <h2 class="text-lg font-bold text-gray-900 mb-4">系统状态</h2>
+            
+            <div id="system-status" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <!-- 初始为空，加载后动态更新 -->
+            </div>
+        </div>
+
+        <!-- 手动操作 -->
+        <div class="mt-6 bg-white rounded-lg shadow-sm p-4">
+            <h2 class="text-lg font-bold text-gray-900 mb-4">手动操作</h2>
+            
+            <div class="flex flex-wrap gap-3">
+                <button onclick="triggerFetch()" class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                    立即抓取 RSS
+                </button>
+                <button onclick="applyKeywordFilter()" class="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors">
+                    应用关键词过滤
+                </button>
+                <button onclick="triggerSummarize()" class="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                    立即生成摘要
+                </button>
+                <button onclick="runFullPipeline()" class="px-4 py-2 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors">
+                    运行完整流程
+                </button>
+                <button onclick="testAI()" class="px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">
+                    测试 AI 功能
+                </button>
+            </div>
+            
+            <div id="manual-result" class="mt-3 hidden">
+                <pre class="bg-gray-100 rounded-lg p-3 text-xs overflow-x-auto"></pre>
+            </div>
+        </div>
+    </main>
+
+    <!-- 添加 RSS 源模态框 -->
+    <div id="source-modal" class="fixed inset-0 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="fixed inset-0 bg-black bg-opacity-50" onclick="closeSourceModal()"></div>
+            <div class="relative bg-white rounded-lg max-w-sm w-full">
+                <div class="px-4 py-3 border-b border-gray-200">
+                    <h3 class="text-base font-bold text-gray-900">添加 RSS 源</h3>
+                </div>
+                <form onsubmit="addSource(event)" class="p-4">
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">名称</label>
+                        <input type="text" id="source-name" required
+                            class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="例如：我的技术博客">
+                    </div>
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">RSS URL</label>
+                        <input type="url" id="source-url" required
+                            class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="https://example.com/feed.xml">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">描述（可选）</label>
+                        <textarea id="source-description" rows="2"
+                            class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="描述这个 RSS 源..."></textarea>
+                    </div>
+                    <div class="flex justify-end space-x-2">
+                        <button type="button" onclick="closeSourceModal()" class="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                            取消
+                        </button>
+                        <button type="submit" class="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                            添加
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加关键词模态框 -->
+    <div id="keyword-modal" class="fixed inset-0 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="fixed inset-0 bg-black bg-opacity-50" onclick="closeKeywordModal()"></div>
+            <div class="relative bg-white rounded-lg max-w-sm w-full">
+                <div class="px-4 py-3 border-b border-gray-200">
+                    <h3 class="text-base font-bold text-gray-900">添加关键词</h3>
+                </div>
+                <form onsubmit="addKeyword(event)" class="p-4">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">关键词</label>
+                        <input type="text" id="keyword-text" required
+                            class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+                            placeholder="输入要过滤的关键词">
+                        <p class="mt-1 text-xs text-gray-500">文章标题或内容包含该关键词将被过滤</p>
+                    </div>
+                    <div class="flex justify-end space-x-2">
+                        <button type="button" onclick="closeKeywordModal()" class="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                            取消
+                        </button>
+                        <button type="submit" class="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                            添加
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/api.js"></script>
+    <script>
+        // 创建广播频道用于跨页面通信
+        const configChannel = new BroadcastChannel('briefly-config');
+
+        // 发送配置变化通知
+        function notifyConfigChange(type) {
+            // 发送广播通知
+            configChannel.postMessage({ type, timestamp: Date.now() });
+            
+            // 更新 localStorage 时间戳（用于跨标签页同步）
+            localStorage.setItem('briefly-config-update', Date.now().toString());
+        }
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSources();
+            loadKeywords();
+            loadSystemStatus();
+        });
+
+        // 加载 RSS 源列表
+        async function loadSources() {
+            const container = document.getElementById('sources-list');
+            
+            try {
+                const sources = await api.getSources();
+                
+                if (sources.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-8 text-gray-500">
+                            <svg class="mx-auto h-12 w-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/>
+                            </svg>
+                            <p>暂无 RSS 源</p>
+                            <button onclick="showAddSourceModal()" class="mt-2 text-blue-500 hover:text-blue-700">
+                                添加第一个源
+                            </button>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = sources.map(source => `
+                    <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center">
+                                <h4 class="font-medium text-gray-900 truncate">${escapeHtml(source.name)}</h4>
+                                ${source.enabled ? `
+                                    <span class="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">启用</span>
+                                ` : `
+                                    <span class="ml-2 px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded">禁用</span>
+                                `}
+                            </div>
+                            <p class="text-sm text-gray-500 truncate mt-1">${escapeHtml(source.url)}</p>
+                            <p class="text-xs text-gray-400 mt-1">
+                                错误: ${source.fetch_error_count} 次
+                                ${source.last_fetched ? ` · 上次: ${new Date(source.last_fetched).toLocaleString('zh-CN')}` : ''}
+                            </p>
+                        </div>
+                        <div class="ml-4 flex items-center space-x-2">
+                            <button onclick="toggleSource(${source.id})" class="p-2 text-gray-500 hover:text-gray-700 transition-colors" title="切换状态">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                            </button>
+                            <button onclick="deleteSource(${source.id})" class="p-2 text-red-500 hover:text-red-700 transition-colors" title="删除">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('加载 RSS 源失败:', error);
+                container.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <p>加载失败，请刷新页面重试</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 加载关键词列表
+        async function loadKeywords() {
+            const container = document.getElementById('keywords-list');
+            
+            try {
+                const keywords = await api.getKeywords();
+                
+                if (keywords.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-8 text-gray-500">
+                            <svg class="mx-auto h-12 w-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+                            </svg>
+                            <p>暂无关键词</p>
+                            <button onclick="showAddKeywordModal()" class="mt-2 text-green-500 hover:text-green-700">
+                                添加第一个关键词
+                            </button>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = keywords.map(keyword => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-900">${escapeHtml(keyword.keyword)}</span>
+                            ${keyword.enabled ? `
+                                <span class="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">启用</span>
+                            ` : `
+                                <span class="ml-2 px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded">禁用</span>
+                            `}
+                            <span class="ml-2 text-xs text-gray-500">匹配 ${keyword.match_count} 次</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="toggleKeyword(${keyword.id})" class="p-1.5 text-gray-500 hover:text-gray-700 transition-colors" title="切换状态">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                            </button>
+                            <button onclick="deleteKeyword(${keyword.id})" class="p-1.5 text-red-500 hover:text-red-700 transition-colors" title="删除">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('加载关键词失败:', error);
+                container.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <p>加载失败，请刷新页面重试</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 加载系统状态
+        async function loadSystemStatus() {
+            const container = document.getElementById('system-status');
+            
+            try {
+                const status = await api.getStatus();
+                
+                container.innerHTML = `
+                    <div class="p-4 bg-blue-50 rounded-lg">
+                        <p class="text-sm text-blue-600 font-medium">RSS 源</p>
+                        <p class="text-2xl font-bold text-blue-900">${status.database.enabled_sources}/${status.database.total_sources}</p>
+                    </div>
+                    <div class="p-4 bg-green-50 rounded-lg">
+                        <p class="text-sm text-green-600 font-medium">文章总数</p>
+                        <p class="text-2xl font-bold text-green-900">${status.database.total_articles}</p>
+                    </div>
+                    <div class="p-4 bg-purple-50 rounded-lg">
+                        <p class="text-sm text-purple-600 font-medium">过滤文章</p>
+                        <p class="text-2xl font-bold text-purple-900">${status.database.filtered_articles}</p>
+                    </div>
+                    <div class="p-4 ${status.scheduler.running ? 'bg-green-50' : 'bg-red-50'} rounded-lg">
+                        <p class="text-sm ${status.scheduler.running ? 'text-green-600' : 'text-red-600'} font-medium">定时任务</p>
+                        <p class="text-2xl font-bold ${status.scheduler.running ? 'text-green-900' : 'text-red-900'}">
+                            ${status.scheduler.running ? '运行中' : '已停止'}
+                        </p>
+                    </div>
+                    <div class="p-4 ${status.ai_configured ? 'bg-green-50' : 'bg-yellow-50'} rounded-lg">
+                        <p class="text-sm ${status.ai_configured ? 'text-green-600' : 'text-yellow-600'} font-medium">AI 功能</p>
+                        <p class="text-2xl font-bold ${status.ai_configured ? 'text-green-900' : 'text-yellow-900'}">
+                            ${status.ai_configured ? '已配置' : '未配置'}
+                        </p>
+                    </div>
+                    <div class="p-4 ${status.webhook_enabled ? 'bg-green-50' : 'bg-gray-50'} rounded-lg">
+                        <p class="text-sm ${status.webhook_enabled ? 'text-green-600' : 'text-gray-600'} font-medium">Webhooks</p>
+                        <p class="text-2xl font-bold ${status.webhook_enabled ? 'text-green-900' : 'text-gray-900'}">
+                            ${status.webhook_enabled ? '已启用' : '未配置'}
+                        </p>
+                    </div>
+                    <div class="p-4 bg-gray-50 rounded-lg">
+                        <p class="text-sm text-gray-600 font-medium">关键词</p>
+                        <p class="text-2xl font-bold text-gray-900">${status.database.enabled_keywords}/${status.database.total_keywords}</p>
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error('加载系统状态失败:', error);
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-8 text-gray-500">
+                        <p>加载失败，请刷新页面重试</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 显示添加 RSS 源模态框
+        function showAddSourceModal() {
+            document.getElementById('source-name').value = '';
+            document.getElementById('source-url').value = '';
+            document.getElementById('source-description').value = '';
+            document.getElementById('source-modal').classList.remove('hidden');
+        }
+
+        // 关闭 RSS 源模态框
+        function closeSourceModal() {
+            document.getElementById('source-modal').classList.add('hidden');
+        }
+
+        // 添加 RSS 源
+        async function addSource(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('source-name').value;
+            const url = document.getElementById('source-url').value;
+            const description = document.getElementById('source-description').value;
+            
+            try {
+                await api.createSource(name, url, description);
+                closeSourceModal();
+                loadSources();
+                loadSystemStatus();
+                notifyConfigChange('sourceChanged');
+                
+                const resultDiv = document.getElementById('manual-result');
+                resultDiv.classList.remove('hidden');
+                resultDiv.querySelector('pre').textContent = '已添加 RSS 源，正在后台抓取...';
+                
+                api.triggerFetchNow().then(() => {
+                    resultDiv.querySelector('pre').textContent = 'RSS 源已添加，正在后台抓取新内容...';
+                }).catch(() => {
+                    resultDiv.querySelector('pre').textContent = 'RSS 源已添加，抓取任务已启动';
+                });
+                
+            } catch (error) {
+                alert('添加失败: ' + (error.message || '未知错误'));
+            }
+        }
+
+        // 切换 RSS 源状态
+        async function toggleSource(sourceId) {
+            try {
+                await api.toggleSource(sourceId);
+                loadSources();
+                notifyConfigChange('sourceChanged');
+                
+                const resultDiv = document.getElementById('manual-result');
+                resultDiv.classList.remove('hidden');
+                resultDiv.querySelector('pre').textContent = '已切换 RSS 源状态，正在后台抓取...';
+                
+                api.triggerFetchNow().then(() => {
+                    resultDiv.querySelector('pre').textContent = 'RSS 源状态已更新，正在后台抓取新内容...';
+                }).catch(() => {
+                    resultDiv.querySelector('pre').textContent = 'RSS 源状态已更新，抓取任务已启动';
+                });
+                
+            } catch (error) {
+                console.error('切换失败:', error);
+            }
+        }
+
+        // 删除 RSS 源
+        async function deleteSource(sourceId) {
+            if (!confirm('确定要删除这个 RSS 源吗？')) return;
+            
+            try {
+                await api.deleteSource(sourceId);
+                loadSources();
+                loadSystemStatus();
+                notifyConfigChange('sourceChanged');
+            } catch (error) {
+                console.error('删除失败:', error);
+            }
+        }
+
+        // 显示添加关键词模态框
+        function showAddKeywordModal() {
+            document.getElementById('keyword-text').value = '';
+            document.getElementById('keyword-modal').classList.remove('hidden');
+        }
+
+        // 关闭关键词模态框
+        function closeKeywordModal() {
+            document.getElementById('keyword-modal').classList.add('hidden');
+        }
+
+        // 添加关键词
+        async function addKeyword(event) {
+            event.preventDefault();
+            
+            const keyword = document.getElementById('keyword-text').value.trim();
+            
+            if (!keyword) {
+                alert('关键词不能为空');
+                return;
+            }
+            
+            try {
+                await api.createKeyword(keyword);
+                closeKeywordModal();
+                loadKeywords();
+                loadSystemStatus();
+                notifyConfigChange('keywordChanged');
+                
+                const resultDiv = document.getElementById('manual-result');
+                resultDiv.classList.remove('hidden');
+                resultDiv.querySelector('pre').textContent = '已添加关键词，正在应用过滤...';
+                
+                api.applyKeywordFilter().then(filterResult => {
+                    resultDiv.querySelector('pre').textContent = `关键词已添加，过滤了 ${filterResult.filtered_count} 篇文章`;
+                    loadKeywords();
+                    loadSystemStatus();
+                }).catch(() => {
+                    resultDiv.querySelector('pre').textContent = '关键词已添加，正在后台应用过滤...';
+                });
+                
+            } catch (error) {
+                alert('添加失败: ' + (error.message || '未知错误'));
+            }
+        }
+
+        // 切换关键词状态
+        async function toggleKeyword(keywordId) {
+            try {
+                await api.toggleKeyword(keywordId);
+                loadKeywords();
+                notifyConfigChange('keywordChanged');
+                
+                const resultDiv = document.getElementById('manual-result');
+                resultDiv.classList.remove('hidden');
+                resultDiv.querySelector('pre').textContent = '已切换关键词状态，正在应用过滤...';
+                
+                api.applyKeywordFilter().then(filterResult => {
+                    resultDiv.querySelector('pre').textContent = `关键词状态已更新，过滤了 ${filterResult.filtered_count} 篇文章`;
+                    loadKeywords();
+                    loadSystemStatus();
+                }).catch(() => {
+                    resultDiv.querySelector('pre').textContent = '关键词状态已更新，正在后台应用过滤...';
+                });
+                
+            } catch (error) {
+                console.error('切换失败:', error);
+            }
+        }
+
+        // 删除关键词
+        async function deleteKeyword(keywordId) {
+            if (!confirm('确定要删除这个关键词吗？')) return;
+            
+            try {
+                await api.deleteKeyword(keywordId);
+                loadKeywords();
+                loadSystemStatus();
+                notifyConfigChange('keywordChanged');
+            } catch (error) {
+                console.error('删除失败:', error);
+            }
+        }
+
+        // 手动抓取 RSS
+        async function triggerFetch() {
+            const resultDiv = document.getElementById('manual-result');
+            resultDiv.classList.remove('hidden');
+            resultDiv.querySelector('pre').textContent = '正在抓取...';
+            
+            try {
+                const result = await api.triggerFetch();
+                resultDiv.querySelector('pre').textContent = JSON.stringify(result, null, 2);
+                loadSystemStatus();
+            } catch (error) {
+                resultDiv.querySelector('pre').textContent = '抓取失败: ' + (error.message || '未知错误');
+            }
+        }
+
+        // 手动生成摘要
+        async function triggerSummarize() {
+            const resultDiv = document.getElementById('manual-result');
+            resultDiv.classList.remove('hidden');
+            resultDiv.querySelector('pre').textContent = '正在生成摘要...';
+            
+            try {
+                const result = await api.triggerSummarize();
+                resultDiv.querySelector('pre').textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                resultDiv.querySelector('pre').textContent = '生成失败: ' + (error.message || '未知错误');
+            }
+        }
+
+        // 运行完整流程
+        async function runFullPipeline() {
+            const resultDiv = document.getElementById('manual-result');
+            resultDiv.classList.remove('hidden');
+            resultDiv.querySelector('pre').textContent = '正在运行...';
+            
+            try {
+                const result = await api.runPipeline();
+                resultDiv.querySelector('pre').textContent = JSON.stringify(result, null, 2);
+                loadSystemStatus();
+                notifyConfigChange('keywordChanged');
+            } catch (error) {
+                resultDiv.querySelector('pre').textContent = '运行失败: ' + (error.message || '未知错误');
+            }
+        }
+
+        // 应用关键词过滤
+        async function applyKeywordFilter() {
+            const resultDiv = document.getElementById('manual-result');
+            resultDiv.classList.remove('hidden');
+            resultDiv.querySelector('pre').textContent = '正在应用过滤...';
+            
+            try {
+                const result = await api.applyKeywordFilter();
+                resultDiv.querySelector('pre').textContent = JSON.stringify(result, null, 2);
+                loadKeywords();
+                loadSystemStatus();
+                notifyConfigChange('keywordChanged');
+            } catch (error) {
+                resultDiv.querySelector('pre').textContent = '应用过滤失败: ' + (error.message || '未知错误');
+            }
+        }
+
+        // 测试 AI 功能
+        async function testAI() {
+            const resultDiv = document.getElementById('manual-result');
+            resultDiv.classList.remove('hidden');
+            resultDiv.querySelector('pre').textContent = '正在测试...';
+            
+            try {
+                const result = await api.testAI();
+                resultDiv.querySelector('pre').textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                resultDiv.querySelector('pre').textContent = '测试失败: ' + (error.message || '未知错误');
+            }
+        }
+
+        // 保存所有更改（预留）
+        function saveAll() {
+            alert('所有更改已自动保存');
+        }
+
+        // HTML 转义
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

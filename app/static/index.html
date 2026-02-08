@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Briefly - RSS 阅读器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        .articles-list .article-card {
+            padding: 12px 16px;
+        }
+        .articles-list .article-card h3 {
+            font-size: 1rem;
+            margin-bottom: 4px;
+        }
+        .articles-list .article-card .article-meta {
+            font-size: 0.8rem;
+        }
+        .articles-list .article-card p {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 顶部导航 -->
+    <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold text-gray-900">Briefly</h1>
+                    <span class="ml-2 text-sm text-gray-500">AI 驱动的 RSS 阅读器</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button onclick="refreshArticles()" class="p-2 text-gray-600 hover:text-gray-900 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                    </button>
+                    <a href="config.html" class="p-2 text-gray-600 hover:text-gray-900 transition-colors" title="RSS 配置">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                    </a>
+                    <button onclick="openAISettingsModal()" class="p-2 text-gray-600 hover:text-gray-900 transition-colors" title="AI 设置">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 统计信息栏 -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div id="stats-bar" class="flex flex-wrap gap-4 text-sm">
+                <!-- 加载状态会动态更新 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- 筛选标签和视图切换 -->
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div class="flex space-x-2 overflow-x-auto pb-2">
+                <button onclick="filterArticles('all')" class="filter-btn active px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white">
+                    全部
+                </button>
+                <button onclick="filterArticles('unread')" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200">
+                    未读
+                </button>
+                <button onclick="filterArticles('filtered')" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200">
+                    过滤
+                </button>
+                <button onclick="filterArticles('favorites')" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200">
+                    收藏
+                </button>
+            </div>
+            <div class="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
+                <button onclick="switchView('card')" id="view-card-btn" class="view-btn active px-3 py-1.5 rounded text-sm font-medium bg-white text-gray-900 shadow-sm">
+                    <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                    </svg>
+                </button>
+                <button onclick="switchView('list')" id="view-list-btn" class="view-btn px-3 py-1.5 rounded text-sm font-medium text-gray-600 hover:text-gray-900">
+                    <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- 文章列表 - 卡片视图 -->
+        <div id="articles-container" class="articles-grid space-y-4">
+            <!-- 骨架屏加载状态 -->
+            <div class="bg-white rounded-lg p-6 shadow-sm skeleton">
+                <div class="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
+                <div class="h-3 bg-gray-200 rounded w-1/2 mb-2"></div>
+                <div class="h-3 bg-gray-200 rounded w-5/6"></div>
+            </div>
+            <div class="bg-white rounded-lg p-6 shadow-sm skeleton">
+                <div class="h-4 bg-gray-200 rounded w-2/3 mb-4"></div>
+                <div class="h-3 bg-gray-200 rounded w-1/3 mb-2"></div>
+                <div class="h-3 bg-gray-200 rounded w-4/5"></div>
+            </div>
+        </div>
+
+        <!-- 文章列表 - 列表视图 -->
+        <div id="articles-list-container" class="articles-list hidden space-y-2"></div>
+
+        <!-- 加载更多 -->
+        <div id="load-more" class="mt-8 text-center hidden">
+            <button onclick="loadMore()" class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                加载更多
+            </button>
+        </div>
+
+        <!-- 空状态 -->
+        <div id="empty-state" class="hidden text-center py-12">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/>
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">暂无文章</h3>
+            <p class="mt-1 text-sm text-gray-500">添加 RSS 源并等待抓取，或手动触发抓取</p>
+        </div>
+    </main>
+
+    <!-- 文章详情模态框 -->
+    <div id="article-modal" class="fixed inset-0 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="fixed inset-0 bg-black bg-opacity-50" onclick="closeModal()"></div>
+            <div class="relative bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+                <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                    <h2 id="modal-title" class="text-xl font-bold text-gray-900"></h2>
+                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div id="modal-content" class="p-6">
+                    <!-- 文章内容将动态插入 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI 设置模态框 -->
+    <div id="ai-settings-modal" class="fixed inset-0 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="fixed inset-0 bg-black bg-opacity-50" onclick="closeAISettingsModal()"></div>
+            <div class="relative bg-white rounded-lg max-w-lg w-full">
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h2 class="text-xl font-bold text-gray-900">AI 设置</h2>
+                    <button onclick="closeAISettingsModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <form id="ai-settings-form" onsubmit="saveAISettings(event)">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                                <input type="password" id="ai-api-key" name="api_key" 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="输入智谱 AI API Key">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Base URL</label>
+                                <input type="url" id="ai-base-url" name="base_url"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="https://open.bigmodel.cn/api/paas/v4">
+                                <p class="mt-1 text-xs text-gray-500">智谱 AI 默认: https://open.bigmodel.cn/api/paas/v4</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">模型</label>
+                                <input type="text" id="ai-model" name="model"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="glm-4">
+                                <p class="mt-1 text-xs text-gray-500">推荐: glm-4 或 glm-3-turbo</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">最大摘要长度</label>
+                                <input type="number" id="ai-max-length" name="max_summary_length"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="100" min="50" max="500">
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="ai-enabled" name="enabled" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                                <label for="ai-enabled" class="ml-2 block text-sm text-gray-700">启用 AI 摘要功能</label>
+                            </div>
+                        </div>
+                        <div id="ai-settings-message" class="mt-4 text-sm hidden"></div>
+                        <div class="mt-6 flex justify-end space-x-3">
+                            <button type="button" onclick="validateAIKey()" class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                                验证 Key
+                            </button>
+                            <button type="button" onclick="closeAISettingsModal()" class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                                取消
+                            </button>
+                            <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                                保存
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/api.js"></script>
+    <script>
+        // 状态变量
+        let currentPage = 1;
+        let currentFilter = 'all';
+        let articles = [];
+        let isLoading = false;
+        let lastConfigUpdate = null;
+
+        // 创建广播频道用于跨页面通信
+        const configChannel = new BroadcastChannel('briefly-config');
+
+        // 监听配置变化
+        configChannel.onmessage = (event) => {
+            if (event.data.type === 'sourceChanged' || event.data.type === 'keywordChanged') {
+                console.log('收到广播通知，检测到配置变化，自动刷新...');
+                handleConfigChange();
+            }
+        };
+
+        // 监听 storage 事件（跨标签页通信）
+        window.addEventListener('storage', (event) => {
+            if (event.key === 'briefly-config-update') {
+                const newTimestamp = event.newValue;
+                if (newTimestamp && newTimestamp !== lastConfigUpdate) {
+                    console.log('检测到配置变化（storage事件），自动刷新...');
+                    handleConfigChange();
+                }
+            }
+        });
+
+        // 处理配置变化
+        async function handleConfigChange() {
+            lastConfigUpdate = localStorage.getItem('briefly-config-update');
+            
+            // 如果是 RSS 源变化，先触发抓取
+            if (lastConfigUpdate) {
+                try {
+                    await api.triggerFetchNow();
+                    console.log('配置已更新，已触发 RSS 抓取');
+                } catch (error) {
+                    console.error('触发抓取失败:', error);
+                }
+            }
+            
+            loadStats();
+            loadArticles(true);
+        }
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 读取初始配置时间戳
+            lastConfigUpdate = localStorage.getItem('briefly-config-update');
+            
+            // 每次页面加载时触发 RSS 抓取
+            try {
+                console.log('页面加载，触发 RSS 抓取...');
+                await api.triggerFetchNow();
+            } catch (error) {
+                console.error('触发 RSS 抓取失败:', error);
+            }
+            
+            loadStats();
+            loadArticles();
+            
+            // 恢复视图模式
+            const savedView = localStorage.getItem('briefly-view-mode');
+            if (savedView === 'list') {
+                switchView('list');
+            }
+            
+            // 定期检查配置变化（每30秒）
+            setInterval(() => {
+                const currentTimestamp = localStorage.getItem('briefly-config-update');
+                if (currentTimestamp && currentTimestamp !== lastConfigUpdate) {
+                    console.log('检测到配置变化（轮询），自动刷新...');
+                    handleConfigChange();
+                }
+            }, 30000);
+            
+            // 每15分钟自动检查RSS源并增量更新
+            setInterval(async () => {
+                console.log('自动检查RSS源...');
+                await autoRefreshArticles();
+            }, 15 * 60 * 1000);
+        });
+
+        // 自动刷新文章（增量更新）
+        async function autoRefreshArticles() {
+            try {
+                // 触发后台抓取
+                await api.triggerFetchNow();
+                console.log('RSS抓取已完成，获取新文章...');
+                
+                // 获取最新文章（第一页）
+                let result;
+                if (currentFilter === 'favorites') {
+                    result = await api.getFavorites(1, 10);
+                } else {
+                    const params = { page: 1, page_size: 10 };
+                    if (currentFilter === 'unread') {
+                        params.is_read = false;
+                    } else if (currentFilter === 'filtered') {
+                        params.filtered = true;
+                    }
+                    result = await api.getArticles(params);
+                }
+                
+                if (result.articles && result.articles.length > 0) {
+                    // 增量更新：只追加新文章到顶部
+                    prependNewArticles(result.articles);
+                    
+                    // 更新统计
+                    await loadStats();
+                    
+                    // 显示新文章提示
+                    showNewArticlesToast(result.articles.length);
+                }
+            } catch (error) {
+                console.error('自动刷新失败:', error);
+            }
+        }
+
+        // 增量更新：只追加新文章到列表顶部
+        function prependNewArticles(newArticles) {
+            const container = document.getElementById('articles-container');
+            const emptyState = document.getElementById('empty-state');
+            
+            // 隐藏空状态
+            emptyState.classList.add('hidden');
+            
+            // 获取当前已有的文章ID
+            const existingIds = new Set();
+            container.querySelectorAll('[data-article-id]').forEach(el => {
+                existingIds.add(parseInt(el.dataset.articleId));
+            });
+            
+            // 过滤掉已存在的文章
+            const uniqueNewArticles = newArticles.filter(a => !existingIds.has(a.id));
+            
+            if (uniqueNewArticles.length === 0) {
+                return;
+            }
+            
+            // 在容器顶部插入新文章
+            const fragment = document.createDocumentFragment();
+            uniqueNewArticles.reverse().forEach(article => {
+                const card = createArticleCard(article);
+                fragment.insertBefore(card, fragment.firstChild);
+            });
+            
+            // 将新文章插入容器顶部
+            container.insertBefore(fragment, container.firstChild);
+            
+            console.log(`增量更新：新增 ${uniqueNewArticles.length} 篇文章`);
+        }
+
+        // 显示新文章提示
+        function showNewArticlesToast(count) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 fade-in';
+            toast.textContent = `新增 ${count} 篇新文章`;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'transition-opacity');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // 加载统计信息
+        async function loadStats() {
+            const statsBar = document.getElementById('stats-bar');
+            
+            try {
+                const stats = await api.getStatistics();
+                statsBar.innerHTML = `
+                    <div class="flex items-center">
+                        <span class="text-gray-600">文章:</span>
+                        <span class="ml-1 font-medium text-gray-900">${stats.total_articles}</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="text-gray-600">未读:</span>
+                        <span class="ml-1 font-medium text-gray-900">${stats.unread_articles}</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="text-gray-600">过滤:</span>
+                        <span class="ml-1 font-medium text-gray-900">${stats.filtered_articles}</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="text-gray-600">源:</span>
+                        <span class="ml-1 font-medium text-gray-900">${stats.enabled_sources}/${stats.total_sources}</span>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('加载统计信息失败:', error);
+                statsBar.innerHTML = `
+                    <div class="flex items-center text-gray-500">
+                        <span>统计信息加载失败</span>
+                    </div>
+                `;
+            }
+        }
+
+        // 加载文章列表
+        async function loadArticles(reset = true) {
+            if (isLoading) return;
+            isLoading = true;
+
+            if (reset) {
+                currentPage = 1;
+                articles = [];
+                document.getElementById('articles-container').innerHTML = '';
+            }
+
+            // 显示骨架屏
+            if (reset) {
+                showSkeleton();
+            }
+
+            try {
+                const params = { page: currentPage, page_size: 20 };
+                
+                // 根据筛选条件添加参数
+                if (currentFilter === 'unread') {
+                    params.is_read = false;
+                } else if (currentFilter === 'filtered') {
+                    params.filtered = true;
+                }
+
+                let result;
+                if (currentFilter === 'favorites') {
+                    result = await api.getFavorites(currentPage, 20);
+                } else {
+                    result = await api.getArticles(params);
+                }
+
+                if (reset) {
+                    articles = result.articles;
+                } else {
+                    articles = [...articles, ...result.articles];
+                }
+
+                renderArticles(result.articles, reset);
+                loadMoreButton(result.articles.length, result.total);
+
+            } catch (error) {
+                console.error('加载文章失败:', error);
+                if (reset) {
+                    showError('加载文章失败，请刷新重试');
+                }
+            } finally {
+                isLoading = false;
+                hideSkeleton();
+            }
+        }
+
+        // 显示骨架屏
+        function showSkeleton() {
+            const container = document.getElementById('articles-container');
+            container.innerHTML = `
+                <div class="bg-white rounded-lg p-6 shadow-sm skeleton mb-4">
+                    <div class="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
+                    <div class="h-3 bg-gray-200 rounded w-1/2 mb-2"></div>
+                    <div class="h-3 bg-gray-200 rounded w-5/6"></div>
+                </div>
+                <div class="bg-white rounded-lg p-6 shadow-sm skeleton">
+                    <div class="h-4 bg-gray-200 rounded w-2/3 mb-4"></div>
+                    <div class="h-3 bg-gray-200 rounded w-1/3 mb-2"></div>
+                    <div class="h-3 bg-gray-200 rounded w-4/5"></div>
+                </div>
+            `;
+        }
+
+        // 隐藏骨架屏
+        function hideSkeleton() {
+            document.querySelectorAll('.skeleton').forEach(el => el.remove());
+        }
+
+        // 渲染文章列表
+        function renderArticles(newArticles, reset = true) {
+            const container = document.getElementById('articles-container');
+            
+            if (reset) {
+                container.innerHTML = '';
+            }
+
+            if (newArticles.length === 0 && reset) {
+                document.getElementById('empty-state').classList.remove('hidden');
+                return;
+            }
+
+            document.getElementById('empty-state').classList.add('hidden');
+
+            newArticles.forEach(article => {
+                const card = createArticleCard(article);
+                container.appendChild(card);
+            });
+        }
+
+        // 创建文章卡片
+        function createArticleCard(article) {
+            const div = document.createElement('div');
+            div.className = 'bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer fade-in article-card';
+            div.dataset.articleId = article.id;
+            div.onclick = () => openArticle(article.id);
+
+            const publishedDate = article.published_at 
+                ? new Date(article.published_at).toLocaleDateString('zh-CN')
+                : '未知日期';
+
+            const summary = article.summary || article.description || '';
+            const summaryPreview = summary.length > 150 
+                ? summary.substring(0, 150) + '...' 
+                : summary;
+
+            div.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0 pr-4">
+                        <h3 class="text-lg font-semibold text-gray-900 hover:text-blue-600 cursor-pointer truncate" onclick="event.stopPropagation(); openArticle(${article.id})">
+                            ${escapeHtml(article.title)}
+                        </h3>
+                        <div class="mt-1 flex items-center text-sm text-gray-500">
+                            <span>${publishedDate}</span>
+                            ${article.author ? `<span class="mx-2">·</span><span>${escapeHtml(article.author)}</span>` : ''}
+                            <a href="${article.link}" target="_blank" onclick="event.stopPropagation();" class="mx-2 text-blue-500 hover:text-blue-700">
+                                查看原文
+                            </a>
+                        </div>
+                        <p class="mt-2 text-gray-600 text-sm line-clamp-2">
+                            ${escapeHtml(summaryPreview)}
+                        </p>
+                    </div>
+                    <div class="flex flex-col items-end space-y-2">
+                        ${article.is_favorite ? `
+                            <button onclick="event.stopPropagation(); toggleFavorite(${article.id})" class="text-yellow-500">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                </svg>
+                            </button>
+                        ` : `
+                            <button onclick="event.stopPropagation(); toggleFavorite(${article.id})" class="text-gray-400 hover:text-yellow-500">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                                </svg>
+                            </button>
+                        `}
+                    </div>
+                </div>
+                ${article.is_filtered ? `
+                    <div class="mt-2 inline-block px-2 py-1 text-xs bg-red-100 text-red-700 rounded">
+                        关键词匹配
+                    </div>
+                ` : ''}
+            `;
+
+            return div;
+        }
+
+        // 筛选文章
+        function filterArticles(filter) {
+            currentFilter = filter;
+            
+            // 更新按钮状态
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active', 'bg-blue-500', 'text-white');
+                btn.classList.add('bg-gray-100', 'text-gray-700');
+            });
+            
+            event.target.classList.add('active', 'bg-blue-500', 'text-white');
+            event.target.classList.remove('bg-gray-100', 'text-gray-700');
+            
+            loadArticles(true);
+        }
+
+        // 切换视图
+        function switchView(view) {
+            const gridContainer = document.getElementById('articles-container');
+            const listContainer = document.getElementById('articles-list-container');
+            const cardBtn = document.getElementById('view-card-btn');
+            const listBtn = document.getElementById('view-list-btn');
+            
+            if (view === 'card') {
+                gridContainer.classList.remove('hidden');
+                listContainer.classList.add('hidden');
+                
+                cardBtn.classList.add('active', 'bg-white', 'text-gray-900', 'shadow-sm');
+                cardBtn.classList.remove('text-gray-600');
+                listBtn.classList.remove('active', 'bg-white', 'text-gray-900', 'shadow-sm');
+                listBtn.classList.add('text-gray-600');
+                
+                // 将列表中的文章移回网格容器
+                const listArticles = listContainer.querySelectorAll('.article-card');
+                listArticles.forEach(article => {
+                    gridContainer.appendChild(article);
+                });
+            } else {
+                gridContainer.classList.add('hidden');
+                listContainer.classList.remove('hidden');
+                
+                listBtn.classList.add('active', 'bg-white', 'text-gray-900', 'shadow-sm');
+                listBtn.classList.remove('text-gray-600');
+                cardBtn.classList.remove('active', 'bg-white', 'text-gray-900', 'shadow-sm');
+                cardBtn.classList.add('text-gray-600');
+                
+                // 将网格中的文章移到列表容器
+                const gridArticles = gridContainer.querySelectorAll('.article-card');
+                gridArticles.forEach(article => {
+                    listContainer.appendChild(article);
+                });
+            }
+            
+            localStorage.setItem('briefly-view-mode', view);
+        }
+
+        // 加载更多文章
+        function loadMore() {
+            currentPage++;
+            loadArticles(false);
+        }
+
+        // 控制加载更多按钮显示
+        function loadMoreButton(count, total) {
+            const btn = document.getElementById('load-more');
+            const loaded = (currentPage - 1) * 20 + count;
+            
+            if (loaded < total) {
+                btn.classList.remove('hidden');
+            } else {
+                btn.classList.add('hidden');
+            }
+        }
+
+        // 打开文章详情
+        async function openArticle(articleId) {
+            const modal = document.getElementById('article-modal');
+            const title = document.getElementById('modal-title');
+            const content = document.getElementById('modal-content');
+            
+            modal.classList.remove('hidden');
+            
+            try {
+                const article = await api.getArticle(articleId);
+                
+                title.textContent = article.title;
+                content.innerHTML = `
+                    <div class="mb-4 flex items-center text-sm text-gray-500">
+                        <span>${article.published_at ? new Date(article.published_at).toLocaleString('zh-CN') : '未知日期'}</span>
+                        ${article.author ? `<span class="mx-2">·</span><span>${escapeHtml(article.author)}</span>` : ''}
+                    </div>
+                    
+                    ${article.summary ? `
+                        <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                            <h4 class="font-semibold text-blue-900 mb-2 flex items-center">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                AI 摘要
+                            </h4>
+                            <p class="text-blue-800">${escapeHtml(article.summary)}</p>
+                        </div>
+                    ` : ''}
+                    
+                    <div class="prose max-w-none">
+                        <div class="article-content">${renderArticleContent(article.description || article.content)}</div>
+                    </div>
+                    
+                    <div class="mt-6 pt-4 border-t border-gray-200 flex flex-wrap gap-3">
+                        <a href="${article.link}" target="_blank" class="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                            </svg>
+                            访问原文
+                        </a>
+                        ${!article.has_summary ? `
+                            <button onclick="generateSummary(${article.id})" class="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                                </svg>
+                                生成摘要
+                            </button>
+                        ` : ''}
+                        <button onclick="sendToWebhook(${article.id})" class="inline-flex items-center px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                            </svg>
+                            推送
+                        </button>
+                        <button onclick="toggleFavorite(${article.id}); openArticle(${article.id})" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                            ${article.is_favorite ? '取消收藏' : '添加收藏'}
+                        </button>
+                    </div>
+                `;
+                
+                // 标记为已读
+                if (!article.is_read) {
+                    await api.markAsRead(articleId);
+                }
+                
+                loadStats();
+                
+            } catch (error) {
+                console.error('获取文章详情失败:', error);
+                content.innerHTML = '<p class="text-red-500">获取文章详情失败</p>';
+            }
+        }
+
+        // 关闭模态框
+        function closeModal() {
+            document.getElementById('article-modal').classList.add('hidden');
+        }
+
+        // 切换收藏
+        async function toggleFavorite(articleId) {
+            try {
+                await api.toggleFavorite(articleId);
+                loadStats();
+                // 重新加载文章列表以更新UI
+                loadArticles();
+            } catch (error) {
+                console.error('切换收藏失败:', error);
+            }
+        }
+
+        // 生成摘要
+        async function generateSummary(articleId) {
+            try {
+                await api.generateSummary(articleId);
+                openArticle(articleId);
+            } catch (error) {
+                console.error('生成摘要失败:', error);
+                alert('生成摘要失败: ' + (error.message || '未知错误'));
+            }
+        }
+
+        // 推送到 Webhook
+        async function sendToWebhook(articleId) {
+            try {
+                await api.sendToWebhook(articleId);
+                alert('推送成功');
+            } catch (error) {
+                console.error('推送失败:', error);
+                alert('推送失败: ' + (error.message || '未知错误'));
+            }
+        }
+
+        // 刷新文章（后台触发，立即返回）
+        async function refreshArticles() {
+            const btn = document.querySelector('button[onclick="refreshArticles()"]');
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+            
+            try {
+                await api.triggerFetchNow();
+                loadStats();
+                loadArticles(true);
+            } catch (error) {
+                console.error('刷新失败:', error);
+            } finally {
+                btn.innerHTML = originalContent;
+            }
+        }
+
+        // 显示错误
+        function showError(message) {
+            const container = document.getElementById('articles-container');
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <svg class="mx-auto h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-900">出错了</h3>
+                    <p class="mt-1 text-sm text-gray-500">${escapeHtml(message)}</p>
+                    <button onclick="loadArticles(true)" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                        重试
+                    </button>
+                </div>
+            `;
+        }
+
+        // HTML 转义
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function renderArticleContent(html) {
+            if (!html) return '<p class="text-gray-500">暂无内容</p>';
+            const div = document.createElement('div');
+            div.innerHTML = html;
+            div.querySelectorAll('img').forEach(img => {
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                img.style.borderRadius = '8px';
+                img.style.margin = '16px 0';
+            });
+            div.querySelectorAll('a').forEach(a => {
+                a.target = '_blank';
+                a.style.color = '#3b82f6';
+            });
+            div.querySelectorAll('p').forEach(p => {
+                p.style.marginBottom = '16px';
+            });
+            return div.innerHTML;
+        }
+
+        // ESC 键关闭模态框
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                closeAISettingsModal();
+            }
+        });
+
+        // AI 设置模态框
+        async function openAISettingsModal() {
+            const modal = document.getElementById('ai-settings-modal');
+            const form = document.getElementById('ai-settings-form');
+            const messageEl = document.getElementById('ai-settings-message');
+            
+            messageEl.classList.add('hidden');
+            
+            try {
+                const config = await api.getAIConfig();
+                document.getElementById('ai-model').value = config.model || '';
+                document.getElementById('ai-max-length').value = config.max_summary_length || 100;
+                document.getElementById('ai-base-url').value = config.base_url || '';
+                document.getElementById('ai-enabled').checked = config.enabled !== false;
+            } catch (error) {
+                console.error('获取 AI 配置失败:', error);
+            }
+            
+            modal.classList.remove('hidden');
+        }
+
+        function closeAISettingsModal() {
+            document.getElementById('ai-settings-modal').classList.add('hidden');
+        }
+
+        async function saveAISettings(event) {
+            event.preventDefault();
+            
+            const apiKey = document.getElementById('ai-api-key').value;
+            const baseUrl = document.getElementById('ai-base-url').value;
+            const model = document.getElementById('ai-model').value;
+            const maxSummaryLength = parseInt(document.getElementById('ai-max-length').value) || 100;
+            const enabled = document.getElementById('ai-enabled').checked;
+            const messageEl = document.getElementById('ai-settings-message');
+            
+            messageEl.classList.remove('hidden');
+            
+            try {
+                const result = await api.saveAISettings({
+                    api_key: apiKey || null,
+                    base_url: baseUrl || null,
+                    model: model || null,
+                    max_summary_length: maxSummaryLength,
+                    enabled: enabled
+                });
+                
+                if (result.success) {
+                    messageEl.textContent = '保存成功！';
+                    messageEl.className = 'mt-4 text-sm text-green-600';
+                    
+                    setTimeout(() => {
+                        closeAISettingsModal();
+                    }, 1000);
+                } else {
+                    messageEl.textContent = '保存失败: ' + result.message;
+                    messageEl.className = 'mt-4 text-sm text-red-600';
+                }
+            } catch (error) {
+                messageEl.textContent = '保存失败: ' + (error.message || '未知错误');
+                messageEl.className = 'mt-4 text-sm text-red-600';
+            }
+        }
+
+        async function validateAIKey() {
+            const messageEl = document.getElementById('ai-settings-message');
+            messageEl.classList.remove('hidden');
+            messageEl.textContent = '验证中...';
+            messageEl.className = 'mt-4 text-sm text-blue-600';
+            
+            try {
+                const result = await api.validateAIKey();
+                if (result.valid) {
+                    messageEl.textContent = '✓ ' + result.message;
+                    messageEl.className = 'mt-4 text-sm text-green-600';
+                } else {
+                    messageEl.textContent = '✗ ' + result.message;
+                    messageEl.className = 'mt-4 text-sm text-red-600';
+                }
+            } catch (error) {
+                messageEl.textContent = '验证失败: ' + (error.message || '未知错误');
+                messageEl.className = 'mt-4 text-sm text-red-600';
+            }
+        }
+    </script>
+</body>
+</html>
