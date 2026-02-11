@@ -1,12 +1,10 @@
 from typing import Dict, List, Optional
 import httpx
-import logging
 
 from app.config import settings
+from app.core.logging import get_logger
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WebhookError(Exception):

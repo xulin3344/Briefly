@@ -22,19 +22,3 @@ class RSSSource(Base):
     
     def __repr__(self):
         return f"<RSSSource(id={self.id}, name='{self.name}', url='{self.url}')>"
-    
-    def to_dict(self):
-        """
-        转换为字典格式
-        """
-        return {
-            "id": self.id,
-            "name": self.name,
-            "url": self.url,
-            "description": self.description,
-            "enabled": self.enabled,
-            "last_fetched": self.last_fetched.isoformat() if self.last_fetched else None,
-            "fetch_error_count": self.fetch_error_count,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
-        }

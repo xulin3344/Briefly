@@ -167,42 +167,8 @@ def run_full_pipeline():
         loop.close()
 
 
-@router.post("/test/ai")
-def test_ai_summary():
-    """
-    测试 AI 摘要功能
-    
-    Returns:
-        测试结果
-    """
-    try:
-        summary = ai_service.generate_test_summary()
-        
-        if summary:
-            return {
-                "success": True,
-                "summary": summary
-            }
-        else:
-            return {
-                "success": False,
-                "message": "AI 摘要生成失败，请检查 API Key 配置"
-            }
-            
-    except ai_service.APIKeyMissingError:
-        return {
-            "success": False,
-            "message": "AI API Key 未配置"
-        }
-    except ai_service.AISummaryError as e:
-        return {
-            "success": False,
-            "message": str(e)
-        }
-
-
 @router.post("/test/rss")
-def test_rss_fetch(url: str):
+async def test_rss_fetch(url: str):
     """
     测试 RSS 源连接
     
@@ -212,7 +178,7 @@ def test_rss_fetch(url: str):
     Returns:
         测试结果
     """
-    result = rss_service.test_rss_connection(url)
+    result = await rss_service.test_rss_connection(url)
     return result
 
 

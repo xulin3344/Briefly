@@ -2,10 +2,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import settings
 
-DATABASE_URL = "sqlite+aiosqlite:////app/data/briefly.db"
-
+# 使用配置文件中的 DATABASE_URL，支持本地开发和 Docker 环境
 async_engine = create_async_engine(
-    DATABASE_URL,
+    settings.DATABASE_URL,
     echo=settings.DEBUG
 )
 

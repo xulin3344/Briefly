@@ -20,16 +20,3 @@ class KeywordConfig(Base):
     
     def __repr__(self):
         return f"<KeywordConfig(id={self.id}, keyword='{self.keyword}', enabled={self.enabled})>"
-    
-    def to_dict(self):
-        """
-        转换为字典格式
-        """
-        return {
-            "id": self.id,
-            "keyword": self.keyword,
-            "enabled": self.enabled,
-            "match_count": self.match_count,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
-        }

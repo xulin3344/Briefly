@@ -1,16 +1,15 @@
 from typing import Optional, List
 from openai import OpenAI, AsyncOpenAI, APIError, RateLimitError
 import httpx
-import logging
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.config import settings, ZHIPUAI_BASE_URL
 from app.models import Article, AISettings
+from app.core.logging import get_logger
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AISummaryError(Exception):

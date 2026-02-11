@@ -18,10 +18,30 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .config-scale-70 {
-            transform: scale(0.7);
-            transform-origin: top left;
-            width: 142.86%;
+        /* Toast 提示样式 */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            z-index: 9999;
+            animation: slideIn 0.3s ease-out;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .toast.success { background-color: #10b981; }
+        .toast.error { background-color: #ef4444; }
+        .toast.info { background-color: #3b82f6; }
+        .toast.warning { background-color: #f59e0b; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
         }
     </style>
 </head>
@@ -45,7 +65,7 @@
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 config-scale-70">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- RSS 源管理 -->
             <div class="bg-white rounded-lg shadow-sm p-4">
@@ -193,6 +213,19 @@
         // 创建广播频道用于跨页面通信
         const configChannel = new BroadcastChannel('briefly-config');
 
+        // Toast 提示函数
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease-out forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
         // 发送配置变化通知
         function notifyConfigChange(type) {
             // 发送广播通知
@@ -200,6 +233,8 @@
             
             // 更新 localStorage 时间戳（用于跨标签页同步）
             localStorage.setItem('briefly-config-update', Date.now().toString());
+            // 更新抓取时间戳
+            localStorage.setItem('briefly-last-fetch', '0');
         }
 
         // 页面加载时初始化
@@ -412,41 +447,27 @@
                 loadSources();
                 loadSystemStatus();
                 notifyConfigChange('sourceChanged');
-                
-                const resultDiv = document.getElementById('manual-result');
-                resultDiv.classList.remove('hidden');
-                resultDiv.querySelector('pre').textContent = '已添加 RSS 源，正在后台抓取...';
+                showToast('RSS 源添加成功', 'success');
                 
                 api.triggerFetchNow().then(() => {
-                    resultDiv.querySelector('pre').textContent = 'RSS 源已添加，正在后台抓取新内容...';
-                }).catch(() => {
-                    resultDiv.querySelector('pre').textContent = 'RSS 源已添加，抓取任务已启动';
-                });
+                    showToast('RSS 内容抓取完成', 'info');
+                }).catch(() => {});
                 
             } catch (error) {
-                alert('添加失败: ' + (error.message || '未知错误'));
+                showToast('添加失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
         // 切换 RSS 源状态
         async function toggleSource(sourceId) {
             try {
-                await api.toggleSource(sourceId);
+                const result = await api.toggleSource(sourceId);
                 loadSources();
                 notifyConfigChange('sourceChanged');
-                
-                const resultDiv = document.getElementById('manual-result');
-                resultDiv.classList.remove('hidden');
-                resultDiv.querySelector('pre').textContent = '已切换 RSS 源状态，正在后台抓取...';
-                
-                api.triggerFetchNow().then(() => {
-                    resultDiv.querySelector('pre').textContent = 'RSS 源状态已更新，正在后台抓取新内容...';
-                }).catch(() => {
-                    resultDiv.querySelector('pre').textContent = 'RSS 源状态已更新，抓取任务已启动';
-                });
-                
+                showToast(result.enabled ? 'RSS 源已启用' : 'RSS 源已禁用', 'success');
             } catch (error) {
                 console.error('切换失败:', error);
+                showToast('切换失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
@@ -459,8 +480,10 @@
                 loadSources();
                 loadSystemStatus();
                 notifyConfigChange('sourceChanged');
+                showToast('RSS 源已删除', 'success');
             } catch (error) {
                 console.error('删除失败:', error);
+                showToast('删除失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
@@ -482,7 +505,7 @@
             const keyword = document.getElementById('keyword-text').value.trim();
             
             if (!keyword) {
-                alert('关键词不能为空');
+                showToast('关键词不能为空', 'warning');
                 return;
             }
             
@@ -492,45 +515,36 @@
                 loadKeywords();
                 loadSystemStatus();
                 notifyConfigChange('keywordChanged');
-                
-                const resultDiv = document.getElementById('manual-result');
-                resultDiv.classList.remove('hidden');
-                resultDiv.querySelector('pre').textContent = '已添加关键词，正在应用过滤...';
+                showToast('关键词添加成功', 'success');
                 
                 api.applyKeywordFilter().then(filterResult => {
-                    resultDiv.querySelector('pre').textContent = `关键词已添加，过滤了 ${filterResult.filtered_count} 篇文章`;
+                    showToast(`已过滤 ${filterResult.filtered_count} 篇文章`, 'info');
                     loadKeywords();
                     loadSystemStatus();
-                }).catch(() => {
-                    resultDiv.querySelector('pre').textContent = '关键词已添加，正在后台应用过滤...';
-                });
+                }).catch(() => {});
                 
             } catch (error) {
-                alert('添加失败: ' + (error.message || '未知错误'));
+                showToast('添加失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
         // 切换关键词状态
         async function toggleKeyword(keywordId) {
             try {
-                await api.toggleKeyword(keywordId);
+                const result = await api.toggleKeyword(keywordId);
                 loadKeywords();
                 notifyConfigChange('keywordChanged');
-                
-                const resultDiv = document.getElementById('manual-result');
-                resultDiv.classList.remove('hidden');
-                resultDiv.querySelector('pre').textContent = '已切换关键词状态，正在应用过滤...';
+                showToast(result.enabled ? '关键词已启用' : '关键词已禁用', 'success');
                 
                 api.applyKeywordFilter().then(filterResult => {
-                    resultDiv.querySelector('pre').textContent = `关键词状态已更新，过滤了 ${filterResult.filtered_count} 篇文章`;
+                    showToast(`已过滤 ${filterResult.filtered_count} 篇文章`, 'info');
                     loadKeywords();
                     loadSystemStatus();
-                }).catch(() => {
-                    resultDiv.querySelector('pre').textContent = '关键词状态已更新，正在后台应用过滤...';
-                });
+                }).catch(() => {});
                 
             } catch (error) {
                 console.error('切换失败:', error);
+                showToast('切换失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
@@ -543,90 +557,82 @@
                 loadKeywords();
                 loadSystemStatus();
                 notifyConfigChange('keywordChanged');
+                showToast('关键词已删除', 'success');
             } catch (error) {
                 console.error('删除失败:', error);
+                showToast('删除失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
         // 手动抓取 RSS
         async function triggerFetch() {
-            const resultDiv = document.getElementById('manual-result');
-            resultDiv.classList.remove('hidden');
-            resultDiv.querySelector('pre').textContent = '正在抓取...';
+            showToast('正在抓取 RSS...', 'info');
             
             try {
                 const result = await api.triggerFetch();
-                resultDiv.querySelector('pre').textContent = JSON.stringify(result, null, 2);
+                showToast(`抓取完成，新增 ${result.new_articles || 0} 篇文章`, 'success');
                 loadSystemStatus();
             } catch (error) {
-                resultDiv.querySelector('pre').textContent = '抓取失败: ' + (error.message || '未知错误');
+                showToast('抓取失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
         // 手动生成摘要
         async function triggerSummarize() {
-            const resultDiv = document.getElementById('manual-result');
-            resultDiv.classList.remove('hidden');
-            resultDiv.querySelector('pre').textContent = '正在生成摘要...';
+            showToast('正在生成摘要...', 'info');
             
             try {
                 const result = await api.triggerSummarize();
-                resultDiv.querySelector('pre').textContent = JSON.stringify(result, null, 2);
+                showToast(`摘要生成完成，处理 ${result.summarized || 0} 篇文章`, 'success');
             } catch (error) {
-                resultDiv.querySelector('pre').textContent = '生成失败: ' + (error.message || '未知错误');
+                showToast('生成失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
         // 运行完整流程
         async function runFullPipeline() {
-            const resultDiv = document.getElementById('manual-result');
-            resultDiv.classList.remove('hidden');
-            resultDiv.querySelector('pre').textContent = '正在运行...';
+            showToast('正在运行完整流程...', 'info');
             
             try {
                 const result = await api.runPipeline();
-                resultDiv.querySelector('pre').textContent = JSON.stringify(result, null, 2);
+                showToast('完整流程执行完成', 'success');
                 loadSystemStatus();
                 notifyConfigChange('keywordChanged');
             } catch (error) {
-                resultDiv.querySelector('pre').textContent = '运行失败: ' + (error.message || '未知错误');
+                showToast('运行失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
         // 应用关键词过滤
         async function applyKeywordFilter() {
-            const resultDiv = document.getElementById('manual-result');
-            resultDiv.classList.remove('hidden');
-            resultDiv.querySelector('pre').textContent = '正在应用过滤...';
+            showToast('正在应用关键词过滤...', 'info');
             
             try {
                 const result = await api.applyKeywordFilter();
-                resultDiv.querySelector('pre').textContent = JSON.stringify(result, null, 2);
+                showToast(`已过滤 ${result.filtered_count || 0} 篇文章`, 'success');
                 loadKeywords();
                 loadSystemStatus();
                 notifyConfigChange('keywordChanged');
             } catch (error) {
-                resultDiv.querySelector('pre').textContent = '应用过滤失败: ' + (error.message || '未知错误');
+                showToast('应用过滤失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
         // 测试 AI 功能
         async function testAI() {
-            const resultDiv = document.getElementById('manual-result');
-            resultDiv.classList.remove('hidden');
-            resultDiv.querySelector('pre').textContent = '正在测试...';
+            showToast('正在测试 AI 功能...', 'info');
             
             try {
                 const result = await api.testAI();
-                resultDiv.querySelector('pre').textContent = JSON.stringify(result, null, 2);
+                showToast(result.success ? 'AI 功能正常' : 'AI 功能异常', result.success ? 'success' : 'warning');
             } catch (error) {
-                resultDiv.querySelector('pre').textContent = '测试失败: ' + (error.message || '未知错误');
+                showToast('测试失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
         // 保存所有更改（预留）
         function saveAll() {
-            alert('所有更改已自动保存');
+            showToast('所有更改已自动保存', 'success');
         }
 
         // HTML 转义

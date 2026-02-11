@@ -2,14 +2,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
-import logging
 
 from app.config import settings
 from app.models import AsyncSessionLocal, Article
 from app.services import rss_service, keyword_service, ai_service
+from app.core.logging import get_logger
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TaskScheduler:

@@ -1,27 +1,42 @@
+import asyncio
 import feedparser
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
 import httpx
-import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log,
+)
 
 from app.config import settings
 from app.models import Article, RSSSource
+from app.core.logging import get_logger
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RSSFetchError(Exception):
+    """RSS 抓取异常基类"""
     pass
 
 
 class RSSParseError(RSSFetchError):
+    """RSS 解析错误"""
     pass
 
 
 class RSSNetworkError(RSSFetchError):
+    """网络连接错误（可重试）"""
+    pass
+
+
+class RSSTimeoutError(RSSFetchError):
+    """请求超时错误（可重试）"""
     pass
 
 
@@ -114,24 +129,59 @@ def extract_entry_data(entry) -> Dict:
     }
 
 
-def fetch_rss_feed(source: RSSSource) -> List[Dict]:
+# 定义可重试的异常类型
+RETRYABLE_EXCEPTIONS = (
+    RSSTimeoutError,
+    RSSNetworkError,
+    httpx.TimeoutException,
+    httpx.ConnectError,
+    httpx.ReadTimeout,
+    httpx.ConnectTimeout,
+)
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+    before_sleep=before_sleep_log(logger, log_level=20),  # INFO level
+    reraise=True,
+)
+async def fetch_rss_feed(source: RSSSource) -> List[Dict]:
+    """
+    异步抓取单个 RSS 源
+    使用 httpx.AsyncClient 避免阻塞事件循环
+    使用 tenacity 实现自动重试机制
+    
+    重试策略：
+    - 最多重试 3 次
+    - 指数退避：2s, 4s, 8s（最大 10s）
+    - 仅对网络错误和超时重试，解析错误不重试
+    """
     logger.info(f"开始抓取 RSS 源: {source.name} ({source.url})")
     
     try:
-        with httpx.Client(timeout=settings.REQUEST_TIMEOUT) as client:
-            response = client.get(source.url, follow_redirects=True)
+        async with httpx.AsyncClient(timeout=settings.REQUEST_TIMEOUT) as client:
+            response = await client.get(source.url, follow_redirects=True)
             response.raise_for_status()
-    except httpx.TimeoutException:
-        raise RSSNetworkError(f"请求超时: {source.url}")
+            response_text = response.text
+    except httpx.TimeoutException as e:
+        logger.warning(f"RSS 源请求超时: {source.name}, 将重试...")
+        raise RSSTimeoutError(f"请求超时: {source.url}")
     except httpx.ConnectError as e:
+        logger.warning(f"RSS 源连接失败: {source.name}, 将重试...")
         raise RSSNetworkError(f"连接失败: {source.url}, 错误: {str(e)}")
     except httpx.HTTPStatusError as e:
+        # HTTP 错误（如 404, 500）不重试
         raise RSSNetworkError(f"HTTP 错误: {e.response.status_code} {source.url}")
     
     try:
-        feed = feedparser.parse(response.text)
+        # feedparser 是同步库，但在 I/O 完成后解析是 CPU 密集型操作
+        # 对于大量数据，可以考虑在线程池中运行
+        feed = feedparser.parse(response_text)
         
         if feed.bozo:
+            # 解析错误不重试
             raise RSSParseError(f"RSS 解析失败: {source.url}")
         
         if not hasattr(feed, 'entries') or not feed.entries:
@@ -193,41 +243,91 @@ async def save_articles(db: AsyncSession, source_id: int, articles: List[Dict]) 
 
 
 async def fetch_and_save_all_sources(db: AsyncSession) -> Dict[int, int]:
+    """
+    并发抓取所有启用的 RSS 源
+    使用 asyncio.gather 实现并发请求，提高抓取效率
+    
+    特性：
+    - 单个源抓取失败不会影响其他源
+    - 每个源都有独立的重试机制
+    - 返回每个源的抓取结果
+    """
     result = await db.execute(select(RSSSource).where(RSSSource.enabled == True))
     sources = result.scalars().all()
     
+    if not sources:
+        logger.info("没有启用的 RSS 源")
+        return {}
+    
     results = {}
     
-    for source in sources:
+    async def fetch_single_source(source: RSSSource) -> tuple[int, List[Dict] | Exception]:
+        """
+        抓取单个源并返回结果
+        异常会被捕获并返回，确保不会中断 asyncio.gather
+        """
         try:
-            articles = fetch_rss_feed(source)
-            
+            articles = await fetch_rss_feed(source)
+            return source.id, articles
+        except RSSFetchError as e:
+            # RSS 相关错误（已重试后仍失败）
+            logger.error(f"RSS 抓取失败 [{source.name}]: {str(e)}")
+            return source.id, e
+        except Exception as e:
+            # 其他未知错误
+            logger.exception(f"RSS 抓取未知错误 [{source.name}]: {str(e)}")
+            return source.id, e
+    
+    # 使用 asyncio.gather 并发执行所有抓取任务
+    # return_exceptions=False 因为我们已经在 fetch_single_source 中处理了异常
+    fetch_tasks = [fetch_single_source(source) for source in sources]
+    fetch_results = await asyncio.gather(*fetch_tasks, return_exceptions=False)
+    
+    # 处理抓取结果
+    for source_id, fetch_result in fetch_results:
+        source = next(s for s in sources if s.id == source_id)
+        
+        if isinstance(fetch_result, Exception):
+            logger.error(f"抓取 RSS 源失败: {source.name}, 错误: {str(fetch_result)}")
+            source.fetch_error_count += 1
+            await db.commit()
+            results[source_id] = -1
+        else:
+            articles = fetch_result
             if articles:
-                saved = await save_articles(db, source.id, articles)
-                results[source.id] = saved
+                saved = await save_articles(db, source_id, articles)
+                results[source_id] = saved
             else:
-                results[source.id] = 0
+                results[source_id] = 0
             
             source.last_fetched = datetime.utcnow()
             source.fetch_error_count = 0
             await db.commit()
-            
-        except RSSFetchError as e:
-            logger.error(f"抓取 RSS 源失败: {source.name}, 错误: {str(e)}")
-            source.fetch_error_count += 1
-            await db.commit()
-            results[source.id] = -1
+    
+    # 汇总日志
+    success_count = sum(1 for v in results.values() if v >= 0)
+    failed_count = sum(1 for v in results.values() if v < 0)
+    total_articles = sum(v for v in results.values() if v > 0)
+    
+    logger.info(
+        f"RSS 抓取完成: 成功 {success_count}/{len(sources)} 个源, "
+        f"失败 {failed_count} 个源, 共 {total_articles} 篇新文章"
+    )
     
     return results
 
 
-def test_rss_connection(url: str) -> Dict:
+async def test_rss_connection(url: str) -> Dict:
+    """
+    异步测试 RSS 源连接
+    """
     try:
-        with httpx.Client(timeout=settings.REQUEST_TIMEOUT) as client:
-            response = client.get(url, follow_redirects=True)
+        async with httpx.AsyncClient(timeout=settings.REQUEST_TIMEOUT) as client:
+            response = await client.get(url, follow_redirects=True)
             response.raise_for_status()
+            response_text = response.text
         
-        feed = feedparser.parse(response.text)
+        feed = feedparser.parse(response_text)
         
         if feed.bozo:
             return {

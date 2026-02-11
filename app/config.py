@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     ZHIPUAI_API_KEY: str = ""
     
     # Database - SQLite 数据库路径
-    DATABASE_URL: str = "sqlite+aiosqlite:////app/data/briefly.db"
+    # 默认使用本地相对路径，Docker 环境可通过环境变量覆盖
+    DATABASE_URL: str = "sqlite+aiosqlite:///./data/briefly.db"
     
     # Server
     HOST: str = "0.0.0.0"
@@ -31,6 +32,9 @@ class Settings(BaseSettings):
     # Webhook
     WEBHOOK_ENABLED: bool = False
     WEBHOOK_URL: str = ""
+    
+    # CORS - 允许的域名列表，多个域名用逗号分隔
+    ALLOWED_ORIGINS: str = "http://localhost:8000,http://127.0.0.1:8000"
     
     class Config:
         env_file = os.path.join(os.path.dirname(__file__), "..", ".env")

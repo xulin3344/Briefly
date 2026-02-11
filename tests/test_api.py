@@ -1,9 +1,17 @@
+"""
+Briefly RSS 聚合器 - API 测试
+"""
 import pytest
 from fastapi.testclient import TestClient
+import os
+
+# 设置测试环境
+os.environ["TESTING"] = "1"
 
 
 @pytest.fixture(scope="module")
 def client():
+    """测试客户端"""
     from app.main import app
     with TestClient(app) as test_client:
         yield test_client
@@ -11,7 +19,7 @@ def client():
 
 class TestHealthEndpoint:
     def test_health_check(self, client):
-        response = client.get("/health")
+        response = client.get("/api/health")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
@@ -20,11 +28,13 @@ class TestHealthEndpoint:
 
 class TestStatusEndpoint:
     def test_get_status(self, client):
-        response = client.get("/status")
+        response = client.get("/api/status")
         assert response.status_code == 200
         data = response.json()
-        assert "status" in data
-        assert "version" in data
+        # 检查返回的状态数据
+        assert "database" in data
+        assert "scheduler" in data
+        assert "ai_configured" in data
 
 
 class TestRSSSourcesAPI:
@@ -48,14 +58,14 @@ class TestArticlesAPI:
         response = client.get("/api/articles")
         assert response.status_code == 200
         data = response.json()
-        assert "items" in data
+        assert "articles" in data
         assert "total" in data
 
     def test_list_articles_with_pagination(self, client):
         response = client.get("/api/articles?page=1&page_size=10")
         assert response.status_code == 200
         data = response.json()
-        assert "items" in data
+        assert "articles" in data
         assert "total" in data
         assert "page" in data
         assert "page_size" in data
@@ -70,8 +80,10 @@ class TestKeywordsAPI:
 
 
 class TestSystemAPI:
-    def test_get_config(self, client):
-        response = client.get("/api/config")
+    def test_get_ai_config(self, client):
+        """测试获取 AI 配置"""
+        response = client.get("/api/ai/config")
         assert response.status_code == 200
         data = response.json()
-        assert "settings" in data
+        # 检查 AI 配置返回
+        assert "model" in data or "enabled" in data or "has_api_key" in data

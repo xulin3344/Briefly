@@ -42,26 +42,3 @@ class Article(Base):
     
     def __repr__(self):
         return f"<Article(id={self.id}, title='{self.title[:50]}...')>"
-    
-    def to_dict(self):
-        """
-        转换为字典格式
-        """
-        return {
-            "id": self.id,
-            "source_id": self.source_id,
-            "guid": self.guid,
-            "title": self.title,
-            "link": self.link,
-            "description": self.description[:200] + "..." if self.description and len(self.description) > 200 else self.description,
-            "content_preview": self.content[:200] + "..." if self.content and len(self.content) > 200 else self.content,
-            "author": self.author,
-            "published_at": self.published_at.isoformat() if self.published_at else None,
-            "is_filtered": self.is_filtered,
-            "has_summary": self.has_summary,
-            "summary": self.summary,
-            "is_read": self.is_read,
-            "is_favorite": self.is_favorite,
-            "fetched_at": self.fetched_at.isoformat() if self.fetched_at else None,
-            "created_at": self.created_at.isoformat() if self.created_at else None
-        }

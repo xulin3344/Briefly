@@ -103,7 +103,7 @@ async def create_source(item: RSSSourceCreate, db: AsyncSession = Depends(get_db
         if existing_source:
             raise HTTPException(status_code=400, detail="该 RSS 源已存在")
         
-        test_result = rss_service.test_rss_connection(str(item.url))
+        test_result = await rss_service.test_rss_connection(str(item.url))
         
         if not test_result["success"]:
             raise HTTPException(
@@ -238,6 +238,6 @@ async def test_source(source_id: int, db: AsyncSession = Depends(get_db)):
     if not source:
         raise HTTPException(status_code=404, detail="RSS 源不存在")
     
-    result = rss_service.test_rss_connection(source.url)
+    result = await rss_service.test_rss_connection(source.url)
     
     return result

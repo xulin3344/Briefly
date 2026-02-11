@@ -47,6 +47,44 @@
         .articles-list .article-card p {
             display: none;
         }
+        /* Toast 提示样式 */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            z-index: 9999;
+            animation: slideIn 0.3s ease-out;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .toast.success { background-color: #10b981; }
+        .toast.error { background-color: #ef4444; }
+        .toast.info { background-color: #3b82f6; }
+        .toast.warning { background-color: #f59e0b; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+        /* 搜索框样式 */
+        .search-container {
+            position: relative;
+        }
+        .search-container input {
+            padding-left: 36px;
+        }
+        .search-container svg {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -91,19 +129,32 @@
 
     <!-- 主内容区 -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- 搜索栏 -->
+        <div class="mb-6">
+            <div class="search-container max-w-md">
+                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input type="text" id="search-input"
+                    class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="搜索文章标题..."
+                    oninput="debounceSearch()">
+            </div>
+        </div>
+        
         <!-- 筛选标签和视图切换 -->
         <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
             <div class="flex space-x-2 overflow-x-auto pb-2">
-                <button onclick="filterArticles('all')" class="filter-btn active px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white">
+                <button data-filter="all" onclick="filterArticles('all')" class="filter-btn active px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white">
                     全部
                 </button>
-                <button onclick="filterArticles('unread')" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200">
+                <button data-filter="unread" onclick="filterArticles('unread')" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200">
                     未读
                 </button>
-                <button onclick="filterArticles('filtered')" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200">
+                <button data-filter="filtered" onclick="filterArticles('filtered')" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200">
                     过滤
                 </button>
-                <button onclick="filterArticles('favorites')" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200">
+                <button data-filter="favorites" onclick="filterArticles('favorites')" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200">
                     收藏
                 </button>
             </div>
@@ -246,12 +297,38 @@
         // 状态变量
         let currentPage = 1;
         let currentFilter = 'all';
+        let currentSearchKeyword = '';
         let articles = [];
         let isLoading = false;
         let lastConfigUpdate = null;
+        let searchDebounceTimer = null;
+        let lastFetchTime = 0;
+        const FETCH_INTERVAL = 5 * 60 * 1000; // 5分钟内不重复抓取
 
         // 创建广播频道用于跨页面通信
         const configChannel = new BroadcastChannel('briefly-config');
+
+        // Toast 提示函数
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease-out forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // 防抖搜索
+        function debounceSearch() {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => {
+                currentSearchKeyword = document.getElementById('search-input').value.trim();
+                loadArticles(true);
+            }, 300);
+        }
 
         // 监听配置变化
         configChannel.onmessage = (event) => {
@@ -275,11 +352,13 @@
         // 处理配置变化
         async function handleConfigChange() {
             lastConfigUpdate = localStorage.getItem('briefly-config-update');
+            lastFetchTime = 0; // 重置抓取时间，允许立即抓取
             
             // 如果是 RSS 源变化，先触发抓取
             if (lastConfigUpdate) {
                 try {
                     await api.triggerFetchNow();
+                    lastFetchTime = Date.now();
                     console.log('配置已更新，已触发 RSS 抓取');
                 } catch (error) {
                     console.error('触发抓取失败:', error);
@@ -295,12 +374,21 @@
             // 读取初始配置时间戳
             lastConfigUpdate = localStorage.getItem('briefly-config-update');
             
-            // 每次页面加载时触发 RSS 抓取
-            try {
-                console.log('页面加载，触发 RSS 抓取...');
-                await api.triggerFetchNow();
-            } catch (error) {
-                console.error('触发 RSS 抓取失败:', error);
+            // 智能抓取：仅在距离上次抓取超过5分钟时才触发
+            const now = Date.now();
+            const lastFetch = parseInt(localStorage.getItem('briefly-last-fetch') || '0');
+            
+            if (now - lastFetch > FETCH_INTERVAL) {
+                try {
+                    console.log('页面加载，触发 RSS 抓取...');
+                    await api.triggerFetchNow();
+                    localStorage.setItem('briefly-last-fetch', now.toString());
+                    lastFetchTime = now;
+                } catch (error) {
+                    console.error('触发 RSS 抓取失败:', error);
+                }
+            } else {
+                console.log('跳过抓取，距离上次抓取不足5分钟');
             }
             
             loadStats();
@@ -470,6 +558,11 @@
                 } else if (currentFilter === 'filtered') {
                     params.filtered = true;
                 }
+                
+                // 添加搜索关键词
+                if (currentSearchKeyword) {
+                    params.keyword = currentSearchKeyword;
+                }
 
                 let result;
                 if (currentFilter === 'favorites') {
@@ -604,14 +697,16 @@
         function filterArticles(filter) {
             currentFilter = filter;
             
-            // 更新按钮状态
+            // 更新按钮状态 - 使用 data-filter 属性精确定位
             document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.remove('active', 'bg-blue-500', 'text-white');
-                btn.classList.add('bg-gray-100', 'text-gray-700');
+                if (btn.dataset.filter === filter) {
+                    btn.classList.add('active', 'bg-blue-500', 'text-white');
+                    btn.classList.remove('bg-gray-100', 'text-gray-700');
+                } else {
+                    btn.classList.remove('active', 'bg-blue-500', 'text-white');
+                    btn.classList.add('bg-gray-100', 'text-gray-700');
+                }
             });
-            
-            event.target.classList.add('active', 'bg-blue-500', 'text-white');
-            event.target.classList.remove('bg-gray-100', 'text-gray-700');
             
             loadArticles(true);
         }
@@ -750,29 +845,51 @@
 
         // 关闭模态框
         function closeModal() {
-            document.getElementById('article-modal').classList.add('hidden');
+            const modal = document.getElementById('article-modal');
+            modal.classList.add('hidden');
+            // 清理模态框内容
+            document.getElementById('modal-title').textContent = '';
+            document.getElementById('modal-content').innerHTML = '';
         }
 
-        // 切换收藏
+        // 切换收藏 - 优化：只更新UI，不重新加载整个列表
         async function toggleFavorite(articleId) {
             try {
-                await api.toggleFavorite(articleId);
+                const result = await api.toggleFavorite(articleId);
                 loadStats();
-                // 重新加载文章列表以更新UI
-                loadArticles();
+                
+                // 更新页面上的收藏按钮状态
+                const cards = document.querySelectorAll(`[data-article-id="${articleId}"]`);
+                cards.forEach(card => {
+                    const btn = card.querySelector('button[onclick*="toggleFavorite"]');
+                    if (btn) {
+                        if (result.is_favorite) {
+                            btn.className = 'text-yellow-500';
+                            btn.innerHTML = `<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+                        } else {
+                            btn.className = 'text-gray-400 hover:text-yellow-500';
+                            btn.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>`;
+                        }
+                    }
+                });
+                
+                showToast(result.is_favorite ? '已添加到收藏' : '已取消收藏', 'success');
             } catch (error) {
                 console.error('切换收藏失败:', error);
+                showToast('操作失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
         // 生成摘要
         async function generateSummary(articleId) {
             try {
+                showToast('正在生成摘要...', 'info');
                 await api.generateSummary(articleId);
+                showToast('摘要生成成功', 'success');
                 openArticle(articleId);
             } catch (error) {
                 console.error('生成摘要失败:', error);
-                alert('生成摘要失败: ' + (error.message || '未知错误'));
+                showToast('生成摘要失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 
@@ -780,10 +897,10 @@
         async function sendToWebhook(articleId) {
             try {
                 await api.sendToWebhook(articleId);
-                alert('推送成功');
+                showToast('推送成功', 'success');
             } catch (error) {
                 console.error('推送失败:', error);
-                alert('推送失败: ' + (error.message || '未知错误'));
+                showToast('推送失败: ' + (error.message || '未知错误'), 'error');
             }
         }
 

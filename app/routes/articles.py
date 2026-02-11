@@ -77,11 +77,11 @@ async def list_articles(
     source_id: int = Query(None, description="RSS 源 ID 筛选"),
     filtered: bool = Query(None, description="是否被过滤"),
     has_summary: bool = Query(None, description="是否有摘要"),
+    is_read: bool = Query(None, description="是否已读"),
     keyword: str = Query(None, description="标题关键词搜索"),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(Article)
-    
+    # 构建查询条件
     conditions = []
     if source_id is not None:
         conditions.append(Article.source_id == source_id)
@@ -89,17 +89,24 @@ async def list_articles(
         conditions.append(Article.is_filtered == filtered)
     if has_summary is not None:
         conditions.append(Article.has_summary == has_summary)
+    if is_read is not None:
+        conditions.append(Article.is_read == is_read)
     if keyword:
         conditions.append(Article.title.contains(keyword))
     
-    if conditions:
-        query = query.where(and_(*conditions))
+    where_clause = and_(*conditions) if conditions else None
     
-    result = await db.execute(query)
-    articles = result.scalars().all()
+    # 优化：使用 SQL COUNT 查询计算总数，避免加载所有数据到内存
+    count_query = select(func.count(Article.id))
+    if where_clause is not None:
+        count_query = count_query.where(where_clause)
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
     
-    total = len(articles)
-    
+    # 分页查询 - 只获取需要的数据
+    query = select(Article)
+    if where_clause is not None:
+        query = query.where(where_clause)
     query = query.order_by(Article.published_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
     
