@@ -546,5 +546,89 @@ const api = {
         });
         if (!response.ok) throw new Error('验证 API Key 失败');
         return response.json();
+    },
+    
+    // ============ Webhook 配置管理 ============
+    
+    /**
+     * 获取 Webhook 配置
+     * @returns {Promise<Object>} Webhook 配置信息
+     */
+    async getWebhookConfig() {
+        const response = await fetch(`${API_BASE}/webhook/config`);
+        if (!response.ok) throw new Error('获取 Webhook 配置失败');
+        return response.json();
+    },
+    
+    /**
+     * 保存 Webhook 配置
+     * @param {Object} config - Webhook 配置
+     * @param {boolean} config.enabled - 是否启用
+     * @param {string} config.url - Webhook URL
+     * @param {string} config.platform - 平台类型
+     * @param {string} config.name - 配置名称
+     * @param {string} config.description - 描述
+     * @returns {Promise<Object>} 保存结果
+     */
+    async saveWebhookConfig(config) {
+        const response = await fetch(`${API_BASE}/webhook/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '保存 Webhook 配置失败');
+        }
+        return response.json();
+    },
+    
+    /**
+     * 测试 Webhook 连接
+     * @param {string} url - Webhook URL（可选，使用当前输入的值）
+     * @param {string} platform - 平台类型（可选）
+     * @returns {Promise<Object>} 测试结果
+     */
+    async testWebhook(url = null, platform = null) {
+        const response = await fetch(`${API_BASE}/webhook/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, platform })
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '测试 Webhook 失败');
+        }
+        return response.json();
+    },
+    
+    /**
+     * 推送收藏文章
+     * @returns {Promise<Object>} 推送结果
+     */
+    async pushFavorites() {
+        const response = await fetch(`${API_BASE}/webhook/push-favorites`, {
+            method: 'POST'
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '推送失败');
+        }
+        return response.json();
+    },
+    
+    /**
+     * 推送过滤文章
+     * @returns {Promise<Object>} 推送结果
+     */
+    async pushFiltered() {
+        const response = await fetch(`${API_BASE}/webhook/push-filtered`, {
+            method: 'POST'
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '推送失败');
+        }
+        return response.json();
     }
 };

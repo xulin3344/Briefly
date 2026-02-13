@@ -97,9 +97,14 @@
                     <span class="ml-2 text-sm text-gray-500">AI 驱动的 RSS 阅读器</span>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <button onclick="refreshArticles()" class="p-2 text-gray-600 hover:text-gray-900 transition-colors">
+                    <button onclick="refreshArticles()" class="p-2 text-gray-600 hover:text-gray-900 transition-colors" title="刷新文章">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                    </button>
+                    <button onclick="pushFilteredArticles()" id="push-btn" class="p-2 text-gray-600 hover:text-blue-600 transition-colors" title="推送过滤文章到 Webhook">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
                         </svg>
                     </button>
                     <a href="config.html" class="p-2 text-gray-600 hover:text-gray-900 transition-colors" title="RSS 配置">
@@ -818,11 +823,11 @@
                                 生成摘要
                             </button>
                         ` : ''}
-                        <button onclick="sendToWebhook(${article.id})" class="inline-flex items-center px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">
+                        <button onclick="pushFilteredArticles()" class="inline-flex items-center px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">
                             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
                             </svg>
-                            推送
+                            推送过滤文章
                         </button>
                         <button onclick="toggleFavorite(${article.id}); openArticle(${article.id})" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
                             ${article.is_favorite ? '取消收藏' : '添加收藏'}
@@ -893,7 +898,7 @@
             }
         }
 
-        // 推送到 Webhook
+        // 推送到 Webhook（当前文章）
         async function sendToWebhook(articleId) {
             try {
                 await api.sendToWebhook(articleId);
@@ -903,7 +908,18 @@
                 showToast('推送失败: ' + (error.message || '未知错误'), 'error');
             }
         }
-
+        
+        // 推送过滤文章
+        async function pushFilteredArticles() {
+            try {
+                const result = await api.pushFiltered();
+                showToast(result.message, result.success ? 'success' : 'error');
+            } catch (error) {
+                console.error('推送失败:', error);
+                showToast('推送失败: ' + (error.message || '未知错误'), 'error');
+            }
+        }
+        
         // 刷新文章（后台触发，立即返回）
         async function refreshArticles() {
             const btn = document.querySelector('button[onclick="refreshArticles()"]');
@@ -1055,6 +1071,27 @@
             } catch (error) {
                 messageEl.textContent = '验证失败: ' + (error.message || '未知错误');
                 messageEl.className = 'mt-4 text-sm text-red-600';
+            }
+        }
+        
+        // 一键推送当前文章到 Webhook
+        async function pushCurrentArticle() {
+            // 获取当前显示的文章列表中的第一篇文章
+            const firstArticle = document.querySelector('[data-article-id]');
+            
+            if (!firstArticle) {
+                showToast('没有可推送的文章', 'warning');
+                return;
+            }
+            
+            const articleId = parseInt(firstArticle.dataset.articleId);
+            
+            try {
+                await api.sendToWebhook(articleId);
+                showToast('推送成功', 'success');
+            } catch (error) {
+                console.error('推送失败:', error);
+                showToast('推送失败: ' + (error.message || '未知错误'), 'error');
             }
         }
     </script>
