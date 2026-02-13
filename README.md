@@ -37,8 +37,9 @@
 - **已读追踪** - 自动标记已读，未读文章一目了然
 
 ### 🔔 Webhook 推送
-- 支持推送到企业微信、钉钉等平台
-- 可配置推送条件和频率
+- 支持推送到企业微信、钉钉、飞书等平台
+- **定时推送** - 默认每小时推送，可配置每天/每周/每月
+- 可选择推送收藏文章或过滤文章
 
 ---
 
@@ -61,8 +62,8 @@
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/yourusername/briefly.git
-cd briefly
+git clone https://github.com/xulin3344/Briefly.git
+cd Briefly
 
 # 2. 安装依赖
 pip install -r requirements.txt
@@ -200,6 +201,16 @@ POST   /api/summarize         # 手动触发 AI 摘要
 POST   /api/run-pipeline      # 运行完整流程
 ```
 
+### Webhook 管理
+
+```
+GET    /api/webhook/config    # 获取 Webhook 配置
+POST   /api/webhook/config    # 更新 Webhook 配置
+POST   /api/webhook/test      # 测试 Webhook 连接
+POST   /api/webhook/push-favorites   # 推送收藏文章
+POST   /api/webhook/push-filtered   # 推送过滤文章
+```
+
 ---
 
 ## 📁 项目结构
@@ -211,20 +222,24 @@ briefly/
 │   ├── config.py               # 配置管理
 │   ├── models/
 │   │   ├── database.py         # 数据库初始化
-│   │   ├── rss_source.py       # RSS 源模型
-│   │   ├── article.py          # 文章模型
-│   │   ├── keyword.py          # 关键词模型
-│   │   └── ai_settings.py      # AI 设置模型
+│   │   ├── rss_source.py      # RSS 源模型
+│   │   ├── article.py         # 文章模型
+│   │   ├── keyword.py         # 关键词模型
+│   │   ├── ai_settings.py     # AI 设置模型
+│   │   └── webhook_config.py  # Webhook 配置模型
 │   ├── services/
 │   │   ├── rss_service.py      # RSS 抓取服务
 │   │   ├── keyword_service.py  # 关键词过滤服务
 │   │   ├── ai_service.py       # AI 摘要服务
+│   │   ├── ai_filter_service.py # AI 过滤服务
 │   │   ├── scheduler_service.py # 定时任务服务
-│   │   └── webhook_service.py  # Webhook 服务
+│   │   ├── webhook_service.py  # Webhook 服务
+│   │   └── webhook_scheduler.py # Webhook 定时推送
 │   ├── routes/
 │   │   ├── sources.py          # RSS 源路由
 │   │   ├── articles.py         # 文章路由
 │   │   ├── keywords.py         # 关键词路由
+│   │   ├── webhook.py          # Webhook 路由
 │   │   └── system.py           # 系统路由
 │   └── static/
 │       ├── index.html          # 阅读页面
