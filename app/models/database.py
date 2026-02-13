@@ -32,6 +32,6 @@ async def get_db():
 
 
 async def init_db():
-    from app.models import article, rss_source, keyword, ai_settings
+    from app.models import article, rss_source, keyword, ai_settings, webhook_config
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

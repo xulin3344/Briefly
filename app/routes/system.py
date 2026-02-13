@@ -32,42 +32,54 @@ async def health_check(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/status")
-async def get_system_status(db: AsyncSession = Depends(get_db)):
+async def get_status(db: AsyncSession = Depends(get_db)):
     """
     获取系统状态
     
-    Args:
-        db: 数据库会话
-        
     Returns:
-        系统状态信息
+        系统状态字典
     """
-    # 获取统计信息（异步查询）
-    total_sources = await db.execute(select(func.count(RSSSource.id)))
-    total_sources = total_sources.scalar() or 0
+    from app.models import WebhookConfig
+    from sqlalchemy import select
     
-    enabled_sources = await db.execute(select(func.count(RSSSource.id)).where(RSSSource.enabled == True))
-    enabled_sources = enabled_sources.scalar() or 0
+    # 获取 RSS 源统计
+    sources_result = await db.execute(select(RSSSource))
+    sources = sources_result.scalars().all()
     
-    total_articles = await db.execute(select(func.count(Article.id)))
-    total_articles = total_articles.scalar() or 0
+    enabled_sources = sum(1 for s in sources if s.enabled)
+    total_sources = len(sources)
     
-    filtered_articles = await db.execute(select(func.count(Article.id)).where(Article.is_filtered == True))
-    filtered_articles = filtered_articles.scalar() or 0
+    # 获取文章统计
+    articles_result = await db.execute(
+        select(func.count(Article.id)).where(Article.is_filtered == False)
+    )
+    total_articles = articles_result.scalar() or 0
     
-    total_keywords = await db.execute(select(func.count(KeywordConfig.id)))
-    total_keywords = total_keywords.scalar() or 0
+    # 获取过滤文章统计
+    filtered_result = await db.execute(
+        select(func.count(Article.id)).where(Article.is_filtered == True)
+    )
+    filtered_articles = filtered_result.scalar() or 0
     
-    enabled_keywords = await db.execute(select(func.count(KeywordConfig.id)).where(KeywordConfig.enabled == True))
-    enabled_keywords = enabled_keywords.scalar() or 0
+    # 获取关键词统计
+    keywords_result = await db.execute(select(KeywordConfig))
+    keywords = keywords_result.scalars().all()
+    
+    enabled_keywords = sum(1 for k in keywords if k.enabled)
+    total_keywords = len(keywords)
     
     # 获取调度器状态
     scheduler_status = scheduler.get_status()
     
+    # 获取 Webhook 配置状态
+    webhook_result = await db.execute(select(WebhookConfig).where(WebhookConfig.id == 1))
+    webhook_config = webhook_result.scalar_one_or_none()
+    webhook_enabled = bool(webhook_config and webhook_config.enabled and webhook_config.url)
+    
     return {
         "database": {
-            "total_sources": total_sources,
             "enabled_sources": enabled_sources,
+            "total_sources": total_sources,
             "total_articles": total_articles,
             "filtered_articles": filtered_articles,
             "total_keywords": total_keywords,
@@ -75,7 +87,7 @@ async def get_system_status(db: AsyncSession = Depends(get_db)):
         },
         "scheduler": scheduler_status,
         "ai_configured": bool(ai_service.get_openai_client() is not None),
-        "webhook_enabled": webhook_service.test_webhook_connection()["success"]
+        "webhook_enabled": webhook_enabled
     }
 
 

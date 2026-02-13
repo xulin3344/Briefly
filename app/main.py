@@ -12,7 +12,8 @@ from app.routes import (
     sources_router,
     articles_router,
     keywords_router,
-    system_router
+    system_router,
+    webhook_router
 )
 from app.services import scheduler
 from app.core.logging import setup_logging, get_logger
@@ -52,6 +53,13 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     logger.info("定时任务调度器已启动")
     
+    # 启动 Webhook 定时推送调度器
+    try:
+        from app.services.webhook_scheduler import start_webhook_scheduler
+        start_webhook_scheduler()
+    except Exception as e:
+        logger.warning(f"Webhook 定时调度器启动失败: {e}")
+    
     logger.info("应用启动完成")
     
     yield  # 应用运行中
@@ -62,6 +70,13 @@ async def lifespan(app: FastAPI):
     # 停止调度器
     scheduler.stop()
     logger.info("定时任务调度器已停止")
+    
+    # 停止 Webhook 调度器
+    try:
+        from app.services.webhook_scheduler import stop_webhook_scheduler
+        stop_webhook_scheduler()
+    except:
+        pass
     
     logger.info("应用已关闭")
 
@@ -103,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(articles_router)
     app.include_router(keywords_router)
     app.include_router(system_router)
+    app.include_router(webhook_router)
     logger.info("路由注册完成")
     
     # 根路径重定向到前端首页

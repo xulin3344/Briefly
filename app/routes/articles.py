@@ -6,7 +6,7 @@ from sqlalchemy import select, func, and_, or_
 import logging
 from datetime import datetime
 
-from app.models import get_db, Article, RSSSource, KeywordConfig
+from app.models import get_db, Article, RSSSource, KeywordConfig, WebhookConfig
 from app.services import ai_service, webhook_service, keyword_service
 
 logger = logging.getLogger(__name__)
@@ -305,11 +305,20 @@ async def send_to_webhook(article_id: int, db: AsyncSession = Depends(get_db)):
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
     
+    # 从数据库获取 Webhook 配置
+    result = await db.execute(select(WebhookConfig).where(WebhookConfig.id == 1))
+    webhook_config = result.scalar_one_or_none()
+    
+    if not webhook_config or not webhook_config.enabled or not webhook_config.url:
+        raise HTTPException(status_code=400, detail="Webhook 未启用或未配置")
+    
     try:
         success = webhook_service.send_webhook_notification(
             title=article.title,
             content=article.summary or article.description or "",
-            url=article.link
+            url=article.link,
+            webhook_url=webhook_config.url,
+            platform=webhook_config.platform
         )
         
         return {
