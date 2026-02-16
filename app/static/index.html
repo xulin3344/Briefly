@@ -352,6 +352,14 @@
                     handleConfigChange();
                 }
             }
+            // 检测抓取完成事件
+            if (event.key === 'briefly-refresh-required' && event.newValue) {
+                console.log('检测到抓取完成（storage事件），清除旧文章并重新加载...');
+                localStorage.removeItem('briefly-refresh-required');
+                articles = [];
+                document.getElementById('articles-container').innerHTML = '';
+                loadArticles(true);
+            }
         });
 
         // 处理配置变化
@@ -398,6 +406,16 @@
             
             loadStats();
             loadArticles();
+            
+            // 检查是否需要刷新文章列表（从配置页面触发抓取后）
+            const refreshRequired = localStorage.getItem('briefly-refresh-required');
+            if (refreshRequired) {
+                console.log('检测到抓取完成，清除旧文章并重新加载...');
+                localStorage.removeItem('briefly-refresh-required');
+                articles = [];
+                document.getElementById('articles-container').innerHTML = '';
+                loadArticles(true);
+            }
             
             // 恢复视图模式
             const savedView = localStorage.getItem('briefly-view-mode');

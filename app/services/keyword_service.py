@@ -47,7 +47,11 @@ class KeywordFilter:
         
         for i, pattern in enumerate(self._patterns):
             if pattern.search(text):
-                matched.append(list(self._keywords)[i])
+                matched.append(self._original_keywords[i])
+                if i < len(self._patterns):
+                    title_pattern = re.compile(r'\b' + re.escape(self._original_keywords[i]) + r'\b', re.IGNORECASE)
+                    if title_pattern.search(text):
+                        title_match = True
         
         if len(matched) > 0:
             return True, matched, title_match

@@ -2,23 +2,22 @@ FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
-# 安装系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖文件并安装
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制应用代码
-COPY . .
+COPY app/ ./app/
+COPY pyproject.toml .
+COPY data/ ./data/
 
-# 创建数据目录
 RUN mkdir -p /app/data
 
-# 暴露端口
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 EXPOSE 8000
 
-# 启动命令
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

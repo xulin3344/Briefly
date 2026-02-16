@@ -712,6 +712,9 @@
                 const result = await api.triggerFetch();
                 showToast(`抓取完成，新增 ${result.new_articles || 0} 篇文章`, 'success');
                 loadSystemStatus();
+                
+                // 设置刷新标记，通知阅读页面刷新
+                localStorage.setItem('briefly-refresh-required', Date.now().toString());
             } catch (error) {
                 showToast('抓取失败: ' + (error.message || '未知错误'), 'error');
             }
