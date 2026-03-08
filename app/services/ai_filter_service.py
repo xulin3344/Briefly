@@ -2,6 +2,9 @@ from typing import Optional, List, Dict
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
+from openai import APIError, RateLimitError, APITimeoutError, APIConnectionError
+import json
+import re
 
 from app.models import Article, AIFilterConfig, AISettings
 from app.services import ai_service
@@ -11,6 +14,22 @@ logger = get_logger(__name__)
 
 
 class AIFilterError(Exception):
+    """AI 过滤基础异常"""
+    pass
+
+
+class AIFilterConfigError(AIFilterError):
+    """AI 过滤配置错误"""
+    pass
+
+
+class AIFilterAPIError(AIFilterError):
+    """AI API 调用错误"""
+    pass
+
+
+class AIFilterParseError(AIFilterError):
+    """AI 响应解析错误"""
     pass
 
 
@@ -132,9 +151,6 @@ async def filter_articles_by_ai(db: AsyncSession) -> Dict:
         
         result_text = response.choices[0].message.content
         
-        import json
-        import re
-        
         json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
         
         if json_match:
@@ -164,9 +180,21 @@ async def filter_articles_by_ai(db: AsyncSession) -> Dict:
             "message": f"已筛选 {filtered_count} 篇文章到AI过滤栏",
             "filtered_count": filtered_count
         }
-            
+    
+    except (APIError, RateLimitError, APITimeoutError, APIConnectionError) as e:
+        logger.error(f"AI API 调用失败: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"AI API 调用失败: {str(e)}"
+        }
+    except json.JSONDecodeError as e:
+        logger.error(f"AI 响应解析失败: {str(e)}")
+        return {
+            "status": "error",
+            "message": "AI 响应格式错误"
+        }
     except Exception as e:
-        logger.error(f"AI 筛选失败: {str(e)}")
+        logger.error(f"AI 筛选未知错误: {str(e)}")
         return {
             "status": "error",
             "message": f"AI 筛选失败: {str(e)}"

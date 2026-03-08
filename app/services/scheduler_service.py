@@ -2,10 +2,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
+from sqlalchemy import delete
 
 from app.config import settings
-from app.models import AsyncSessionLocal, Article
-from app.services import rss_service, keyword_service, ai_service
+from app.models import AsyncSessionLocal, Article, RSSSource
+from app.services import rss_service, keyword_service, ai_service, cleanup_service
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -22,6 +23,7 @@ class TaskScheduler:
             logger.warning("调度器已在运行中")
             return
         
+        # RSS 抓取任务 - 每小时执行
         self.scheduler.add_job(
             self.fetch_rss_task,
             trigger=IntervalTrigger(minutes=settings.FETCH_INTERVAL_MINUTES),
@@ -31,6 +33,7 @@ class TaskScheduler:
             max_instances=1
         )
         
+        # AI 总结任务 - 每小时的第5和第35分钟执行
         self.scheduler.add_job(
             self.ai_summary_task,
             trigger=CronTrigger(minute='5,35'),
@@ -39,6 +42,30 @@ class TaskScheduler:
             replace_existing=True,
             max_instances=2
         )
+        
+        # 每日重置任务 - 每天指定时间执行
+        if settings.AUTO_RESET_ENABLED:
+            self.scheduler.add_job(
+                self.daily_reset_task,
+                trigger=CronTrigger(hour=settings.AUTO_RESET_HOUR, minute=0),
+                id='daily_reset',
+                name='Daily Database Reset',
+                replace_existing=True,
+                max_instances=1
+            )
+            logger.info(f"每日重置任务已启用，重置时间: 每天 {settings.AUTO_RESET_HOUR}:00")
+        
+        # 文章清理任务 - 每天凌晨2点执行
+        if settings.AUTO_CLEANUP_ENABLED:
+            self.scheduler.add_job(
+                self.cleanup_task,
+                trigger=CronTrigger(hour=2, minute=0),
+                id='cleanup_articles',
+                name='Old Articles Cleanup',
+                replace_existing=True,
+                max_instances=1
+            )
+            logger.info(f"文章自动清理任务已启用，清理 {settings.CLEANUP_DAYS} 天前的文章")
         
         self.scheduler.start()
         self._is_running = True
@@ -59,6 +86,10 @@ class TaskScheduler:
             return self.fetch_rss_task()
         elif task_id == 'ai_summary':
             return self.ai_summary_task()
+        elif task_id == 'daily_reset':
+            return self.daily_reset_task()
+        elif task_id == 'cleanup_articles':
+            return self.cleanup_task()
         else:
             logger.error(f"未知任务 ID: {task_id}")
             return None
@@ -77,6 +108,7 @@ class TaskScheduler:
                 logger.info(f"RSS 抓取完成: 新增 {total_articles} 篇文章, "
                            f"失败 {failed_sources} 个源")
                 
+                # 抓取完成后自动运行过滤
                 filtered_count = await keyword_service.filter_articles_by_keywords(db)
                 logger.info(f"关键词过滤完成: 过滤 {len(filtered_count)} 篇文章")
                 
@@ -135,6 +167,86 @@ class TaskScheduler:
                 
             except Exception as e:
                 logger.error(f"AI 总结任务异常: {str(e)}")
+                return {
+                    "status": "error",
+                    "message": str(e)
+                }
+    
+    async def daily_reset_task(self):
+        """
+        每日重置任务
+        清空所有文章数据，但保留 RSS 源和关键词配置
+        """
+        logger.info("=" * 50)
+        logger.info(f"[{datetime.now()}] 开始执行每日重置任务")
+        
+        if not settings.AUTO_RESET_ENABLED:
+            logger.info("自动重置已禁用，跳过")
+            return {
+                "status": "skipped",
+                "message": "自动重置已禁用"
+            }
+        
+        async with AsyncSessionLocal() as db:
+            try:
+                # 删除所有文章
+                await db.execute(delete(Article))
+                await db.commit()
+                
+                logger.info("文章数据已清空")
+                
+                # 重置 RSS 源的抓取统计
+                from sqlalchemy import update
+                await db.execute(
+                    update(RSSSource).values(
+                        fetch_error_count=0,
+                        last_fetched=None
+                    )
+                )
+                await db.commit()
+                
+                logger.info("RSS 源抓取统计已重置")
+                
+                return {
+                    "status": "success",
+                    "message": "每日重置完成"
+                }
+                
+            except Exception as e:
+                logger.error(f"每日重置任务异常: {str(e)}")
+                return {
+                    "status": "error",
+                    "message": str(e)
+                }
+    
+    async def cleanup_task(self):
+        """
+        文章清理任务
+        自动清理过期的旧文章
+        """
+        logger.info("=" * 50)
+        logger.info(f"[{datetime.now()}] 开始执行文章清理任务")
+        
+        if not settings.AUTO_CLEANUP_ENABLED:
+            logger.info("自动清理已禁用，跳过")
+            return {
+                "status": "skipped",
+                "message": "自动清理已禁用"
+            }
+        
+        async with AsyncSessionLocal() as db:
+            try:
+                result = await cleanup_service.cleanup_old_articles(db)
+                
+                if result["status"] == "success":
+                    logger.info(f"文章清理完成: 删除 {result['deleted_count']} 篇旧文章")
+                else:
+                    logger.error(f"文章清理失败: {result['message']}")
+                
+                return result
+                
+            except Exception as e:
+                logger.error(f"文章清理任务异常: {str(e)}")
                 return {
                     "status": "error",
                     "message": str(e)

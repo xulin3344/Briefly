@@ -2,12 +2,13 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, case
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from app.models import get_db, Article, RSSSource, KeywordConfig, WebhookConfig
 from app.services import ai_service, webhook_service, keyword_service
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +80,17 @@ async def list_articles(
     has_summary: bool = Query(None, description="是否有摘要"),
     is_read: bool = Query(None, description="是否已读"),
     keyword: str = Query(None, description="标题关键词搜索"),
+    days: int = Query(None, description="显示最近几天的文章（默认使用配置）"),
     db: AsyncSession = Depends(get_db)
 ):
     # 构建查询条件
     conditions = []
+    
+    # 添加时间过滤 - 只显示最近 N 天的文章
+    cache_days = days if days is not None else settings.ARTICLE_CACHE_DAYS
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=cache_days)
+    conditions.append(Article.published_at >= cutoff_date)
+    
     if source_id is not None:
         conditions.append(Article.source_id == source_id)
     if filtered is not None:
@@ -125,9 +133,19 @@ async def list_articles(
 async def get_favorites(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    days: int = Query(None, description="显示最近几天的文章"),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(Article).where(Article.is_favorite == True)
+    # 时间过滤
+    cache_days = days if days is not None else settings.ARTICLE_CACHE_DAYS
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=cache_days)
+    
+    query = select(Article).where(
+        and_(
+            Article.is_favorite == True,
+            Article.published_at >= cutoff_date
+        )
+    )
     query = query.order_by(Article.published_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
     
@@ -141,9 +159,19 @@ async def get_favorites(
 async def get_filtered_articles(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    days: int = Query(None, description="显示最近几天的文章"),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(Article).where(Article.is_filtered == True)
+    # 时间过滤
+    cache_days = days if days is not None else settings.ARTICLE_CACHE_DAYS
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=cache_days)
+    
+    query = select(Article).where(
+        and_(
+            Article.is_filtered == True,
+            Article.published_at >= cutoff_date
+        )
+    )
     query = query.order_by(Article.published_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
     
@@ -157,8 +185,13 @@ async def get_filtered_articles(
 async def get_keyword_matched_articles(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    days: int = Query(None, description="显示最近几天的文章"),
     db: AsyncSession = Depends(get_db)
 ):
+    # 时间过滤
+    cache_days = days if days is not None else settings.ARTICLE_CACHE_DAYS
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=cache_days)
+    
     result = await db.execute(
         select(KeywordConfig).where(KeywordConfig.enabled == True)
     )
@@ -169,7 +202,7 @@ async def get_keyword_matched_articles(
     
     keyword_list = [kw.keyword.lower() for kw in keywords]
     
-    conditions = []
+    conditions = [Article.published_at >= cutoff_date]  # 添加时间过滤
     for keyword in keyword_list:
         keyword_pattern = f'%{keyword}%'
         conditions.append(
@@ -180,7 +213,7 @@ async def get_keyword_matched_articles(
             )
         )
     
-    query = select(Article).where(or_(*conditions))
+    query = select(Article).where(and_(*conditions))
     query = query.order_by(Article.published_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
     
@@ -192,37 +225,40 @@ async def get_keyword_matched_articles(
 
 @router.get("/statistics")
 async def get_statistics(db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import select
+    """
+    获取文章统计信息
     
-    result = await db.execute(select(func.count(Article.id)))
-    total = result.scalar() or 0
+    优化：使用单次查询计算所有文章统计，减少数据库往返
+    """
+    # 单次查询计算所有文章统计
+    article_stats = await db.execute(
+        select(
+            func.count(Article.id).label('total'),
+            func.sum(case((Article.is_read == False, 1), else_=0)).label('unread'),
+            func.sum(case((Article.is_filtered == True, 1), else_=0)).label('filtered'),
+            func.sum(case((Article.has_summary == True, 1), else_=0)).label('with_summary'),
+            func.sum(case((Article.is_favorite == True, 1), else_=0)).label('favorites'),
+        )
+    )
+    stats_row = article_stats.one()
     
-    result = await db.execute(select(func.count(Article.id)).where(Article.is_read == False))
-    unread = result.scalar() or 0
-    
-    result = await db.execute(select(func.count(Article.id)).where(Article.is_filtered == True))
-    filtered = result.scalar() or 0
-    
-    result = await db.execute(select(func.count(Article.id)).where(Article.has_summary == True))
-    with_summary = result.scalar() or 0
-    
-    result = await db.execute(select(func.count(Article.id)).where(Article.is_favorite == True))
-    favorites = result.scalar() or 0
-    
-    result = await db.execute(select(func.count(RSSSource.id)))
-    sources_count = result.scalar() or 0
-    
-    result = await db.execute(select(func.count(RSSSource.id)).where(RSSSource.enabled == True))
-    enabled_sources = result.scalar() or 0
+    # 单次查询计算 RSS 源统计
+    source_stats = await db.execute(
+        select(
+            func.count(RSSSource.id).label('total'),
+            func.sum(case((RSSSource.enabled == True, 1), else_=0)).label('enabled'),
+        )
+    )
+    source_row = source_stats.one()
     
     return {
-        "total_articles": total,
-        "unread_articles": unread,
-        "filtered_articles": filtered,
-        "articles_with_summary": with_summary,
-        "favorite_articles": favorites,
-        "total_sources": sources_count,
-        "enabled_sources": enabled_sources
+        "total_articles": stats_row.total or 0,
+        "unread_articles": stats_row.unread or 0,
+        "filtered_articles": stats_row.filtered or 0,
+        "articles_with_summary": stats_row.with_summary or 0,
+        "favorite_articles": stats_row.favorites or 0,
+        "total_sources": source_row.total or 0,
+        "enabled_sources": source_row.enabled or 0
     }
 
 
@@ -313,7 +349,7 @@ async def send_to_webhook(article_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Webhook 未启用或未配置")
     
     try:
-        success = webhook_service.send_webhook_notification(
+        success = await webhook_service.send_webhook_notification(
             title=article.title,
             content=article.summary or article.description or "",
             url=article.link,

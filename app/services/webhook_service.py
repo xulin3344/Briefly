@@ -23,7 +23,7 @@ class WebhookSendError(WebhookError):
     pass
 
 
-def send_webhook_notification(
+async def send_webhook_notification(
     title: str,
     content: str,
     url: Optional[str] = None,
@@ -31,7 +31,7 @@ def send_webhook_notification(
     platform: str = "generic"
 ) -> bool:
     """
-    发送 Webhook 通知
+    发送 Webhook 通知（异步版本）
     支持企业微信、钉钉、飞书等 Webhook 格式
     
     Args:
@@ -54,9 +54,9 @@ def send_webhook_notification(
     message = build_webhook_message_by_platform(title, content, url, platform)
     
     try:
-        # 发送 HTTP POST 请求
-        with httpx.Client(timeout=30) as client:
-            response = client.post(target_url, json=message)
+        # 发送 HTTP POST 请求（异步）
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(target_url, json=message)
             response.raise_for_status()
         
         logger.info(f"Webhook 通知发送成功: {title} ({platform})")
@@ -91,27 +91,30 @@ def build_webhook_message_by_platform(
     Returns:
         适配各平台的消息格式
     """
-    if platform == "feishu-card":
+    if platform == "feishu":
+        # 飞书简洁版 - text 格式
+        return build_feishu_flow_message(title, content, url)
+    elif platform == "feishu-card":
+        # 飞书卡片版 - interactive 格式
         return build_feishu_card_message(title, content, url)
-    elif platform == "feishu":
+    elif platform == "feishu-flow":
+        # 飞书 Flow - text 格式
         return build_feishu_flow_message(title, content, url)
     elif platform == "wecom":
         return build_wecom_message(title, content, url)
     elif platform == "dingtalk":
         return build_dingtalk_message(title, content, url)
-    elif platform == "feishu-flow":
-        return build_feishu_flow_message(title, content, url)
     else:
         return build_generic_message(title, content, url)
 
 
-def send_enterprise_wechat_notification(
+async def send_enterprise_wechat_notification(
     title: str,
     content: str,
     url: Optional[str] = None
 ) -> bool:
     """
-    发送企业微信 Webhook 通知
+    发送企业微信 Webhook 通知（异步版本）
     
     Args:
         title: 通知标题
@@ -139,8 +142,8 @@ def send_enterprise_wechat_notification(
     }
     
     try:
-        with httpx.Client(timeout=30) as client:
-            response = client.post(settings.WEBHOOK_URL, json=message)
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(settings.WEBHOOK_URL, json=message)
             response.raise_for_status()
         
         return True
@@ -150,13 +153,13 @@ def send_enterprise_wechat_notification(
         return False
 
 
-def send_dingtalk_notification(
+async def send_dingtalk_notification(
     title: str,
     content: str,
     url: Optional[str] = None
 ) -> bool:
     """
-    发送钉钉 Webhook 通知
+    发送钉钉 Webhook 通知（异步版本）
     
     Args:
         title: 通知标题
@@ -186,8 +189,8 @@ def send_dingtalk_notification(
     }
     
     try:
-        with httpx.Client(timeout=30) as client:
-            response = client.post(settings.WEBHOOK_URL, json=message)
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(settings.WEBHOOK_URL, json=message)
             response.raise_for_status()
         
         return True
@@ -197,65 +200,67 @@ def send_dingtalk_notification(
         return False
 
 
-def test_webhook_connection() -> Dict:
+async def test_webhook_connection_async(db) -> Dict:
     """
-    测试 Webhook 连接（使用数据库配置）
+    测试 Webhook 连接（异步版本，使用数据库配置）
     
+    Args:
+        db: 异步数据库会话
+        
     Returns:
         测试结果字典
     """
-    from app.models import get_db, WebhookConfig
+    from app.models import WebhookConfig
     from sqlalchemy import select
     
-    db_gen = get_db()
-    db = next(db_gen)
+    result = await db.execute(select(WebhookConfig).where(WebhookConfig.id == 1))
+    config = result.scalar_one_or_none()
+    
+    if not config or not config.enabled or not config.url:
+        return {
+            "success": False,
+            "message": "Webhook 未配置"
+        }
     
     try:
-        result = db.execute(select(WebhookConfig).where(WebhookConfig.id == 1))
-        config = result.scalar_one_or_none()
-        
-        if not config or not config.enabled or not config.url:
-            return {
-                "success": False,
-                "message": "Webhook 未配置"
-            }
-        
-        try:
-            success = send_webhook_notification(
-                title="Briefly 测试通知",
-                content="这是一条测试通知，用于验证 Webhook 配置是否正确。",
-                webhook_url=config.url,
-                platform=config.platform
-            )
-            
-            return {
-                "success": success,
-                "message": "通知发送成功" if success else "通知发送失败"
-            }
-        except WebhookSendError as e:
-            return {
-                "success": False,
-                "message": str(e)
-            }
-    finally:
-        db.close()
-    
-    try:
-        success = send_webhook_notification(
+        success = await send_webhook_notification(
             title="Briefly 测试通知",
-            content="这是一条测试通知，用于验证 Webhook 配置是否正确。"
+            content="这是一条测试通知，用于验证 Webhook 配置是否正确。",
+            webhook_url=config.url,
+            platform=config.platform
         )
         
         return {
             "success": success,
-            "message": "测试通知发送成功" if success else "测试通知发送失败"
+            "message": "通知发送成功" if success else "通知发送失败"
         }
-        
+    except WebhookSendError as e:
+        return {
+            "success": False,
+            "message": str(e)
+        }
     except WebhookError as e:
         return {
             "success": False,
             "message": str(e)
         }
+
+
+def test_webhook_connection() -> Dict:
+    """
+    测试 Webhook 连接（同步版本，已弃用，保留向后兼容）
+    
+    Returns:
+        测试结果字典
+    """
+    import asyncio
+    
+    async def _test():
+        from app.models import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            return await test_webhook_connection_async(db)
+    
+    return asyncio.run(_test())
 
 
 def build_feishu_flow_message(
@@ -264,16 +269,19 @@ def build_feishu_flow_message(
     url: Optional[str] = None
 ) -> Dict:
     """
-    构建飞书群机器人消息格式（简洁版）
-    适用于飞书自定义机器人
+    构建飞书群机器人消息格式
     使用 text 格式
     """
-    url_part = f"\n\n查看原文: {url}" if url else ""
+    text_content = title
+    if content:
+        text_content += f"\n\n{content}"
+    if url:
+        text_content += f"\n\n查看原文: {url}"
     
     message = {
         "msg_type": "text",
         "content": {
-            "text": f"{title}\n\n{content[:400]}{'...' if len(content) > 400 else ''}{url_part}"
+            "text": text_content[:2000]
         }
     }
     
@@ -305,7 +313,7 @@ def build_feishu_card_message(
             "actions": [
                 {
                     "tag": "button",
-                    "text": {"tag": "lark_md", "content": "查看原文"},
+                    "text": {"tag": "plain_text", "content": "查看原文"},
                     "type": "primary",
                     "url": url
                 }
@@ -315,9 +323,12 @@ def build_feishu_card_message(
     message = {
         "msg_type": "interactive",
         "card": {
+            "config": {
+                "wide_screen_mode": True
+            },
             "header": {
                 "title": {
-                    "tag": "lark_md",
+                    "tag": "plain_text",
                     "content": title[:100]
                 },
                 "template": "blue"
@@ -386,11 +397,11 @@ def build_dingtalk_message(
     return message
 
 
-def send_webhook_message(webhook_url: str, message: Dict) -> bool:
-    """发送 Webhook 消息"""
+async def send_webhook_message(webhook_url: str, message: Dict) -> bool:
+    """发送 Webhook 消息（异步版本）"""
     try:
-        with httpx.Client(timeout=30) as client:
-            response = client.post(webhook_url, json=message)
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(webhook_url, json=message)
             response.raise_for_status()
             
             # 检查飞书响应
@@ -400,7 +411,7 @@ def send_webhook_message(webhook_url: str, message: Dict) -> bool:
                     error_msg = resp_data.get("msg", "Unknown error")
                     logger.error(f"Webhook 发送失败: {error_msg}")
                     return False
-            except:
+            except Exception:
                 pass
                 
         return True
@@ -434,17 +445,25 @@ def build_feishu_favorites_message(articles: list) -> Dict:
     elements.append({
         "tag": "div",
         "text": {
-            "tag": "lark_md",
-            "content": f"📚 **收藏文章 ({len(articles)} 篇)**"
+            "tag": "plain_text",
+            "content": f"📚 收藏文章 ({len(articles)} 篇)\n"
         }
     })
     
+    # 添加分割线
+    elements.append({
+        "tag": "hr"
+    })
+    
     for i, article in enumerate(articles[:10], 1):  # 最多显示10篇
-        title = article.get('title', '')
+        title = article.get('title', '')[:40]
         link = article.get('link', '')
         
-        # 完整标题，使用div+超链接格式
-        content = f"**{i}.** [{title}]({link})" if link else f"**{i}.** {title}"
+        # 直接在 lark_md 中使用飞书链接格式
+        if link:
+            content = f"{i}. [{title}...]({link})"
+        else:
+            content = f"{i}. {title}..."
         
         elements.append({
             "tag": "div",
@@ -457,9 +476,12 @@ def build_feishu_favorites_message(articles: list) -> Dict:
     message = {
         "msg_type": "interactive",
         "card": {
+            "config": {
+                "wide_screen_mode": True
+            },
             "header": {
                 "title": {
-                    "tag": "lark_md",
+                    "tag": "plain_text",
                     "content": "📚 收藏文章推送"
                 },
                 "template": "blue"
@@ -472,20 +494,23 @@ def build_feishu_favorites_message(articles: list) -> Dict:
 
 
 def build_feishu_flow_favorites_message(articles: list) -> Dict:
-    """构建飞书 Flow 收藏文章批量推送消息"""
-    # Build text content with all articles
-    lines = [f"收藏文章 ({len(articles)} 篇)\n"]
-    for i, article in enumerate(articles, 1):
-        title = article.get('title', '')
-        link = article.get('link', '')
-        lines.append(f"{i}. {title}")
-        if link:
-            lines.append(f"   {link}")
+    """构建飞书收藏文章批量推送消息 - 简单text格式"""
+    lines = [f"📚 收藏文章 ({len(articles)} 篇)\n"]
     
+    for i, article in enumerate(articles[:20], 1):  # 最多显示20篇
+        title = article.get('title', '')[:50]
+        link = article.get('link', '')
+        if link:
+            lines.append(f"{i}. {title}...")
+            lines.append(f"   🔗 {link}")
+        else:
+            lines.append(f"{i}. {title}")
+    
+    text_content = "\n".join(lines)
     message = {
         "msg_type": "text",
         "content": {
-            "text": "\n".join(lines)
+            "text": text_content[:4000]  # 飞书text类型最大4000字符
         }
     }
     

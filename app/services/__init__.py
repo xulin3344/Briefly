@@ -50,7 +50,8 @@ from app.services.webhook_service import (
     send_webhook_message,
     send_enterprise_wechat_notification,
     send_dingtalk_notification,
-    test_webhook_connection
+    test_webhook_connection,
+    test_webhook_connection_async,
 )
 
 __all__ = [
@@ -106,5 +107,6 @@ __all__ = [
     "send_webhook_message",
     "send_enterprise_wechat_notification",
     "send_dingtalk_notification",
-    "test_webhook_connection"
+    "test_webhook_connection",
+    "test_webhook_connection_async",
 ]

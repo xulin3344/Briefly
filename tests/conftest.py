@@ -30,6 +30,8 @@ def client():
     
     # 创建测试数据库表
     async def create_tables():
+        # 确保所有模型都已导入
+        from app.models import article, rss_source, keyword, ai_settings, ai_filter_config, webhook_config
         async with async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     

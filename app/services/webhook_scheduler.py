@@ -4,6 +4,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select, create_engine
 from sqlalchemy.orm import sessionmaker
 import logging
+import asyncio
 
 from app.models import WebhookConfig, Article
 from app.services.webhook_service import send_webhook_message, build_favorites_webhook_message
@@ -22,8 +23,8 @@ def get_sync_db():
     return SessionLocal()
 
 
-def webhook_push_task():
-    """定时推送文章任务"""
+async def webhook_push_task():
+    """定时推送文章任务（异步版本）"""
     db = get_sync_db()
     
     try:
@@ -51,7 +52,7 @@ def webhook_push_task():
             if favorites:
                 articles = [{"title": a.title, "link": a.link} for a in favorites]
                 message = build_favorites_webhook_message(articles, config.platform)
-                success = send_webhook_message(config.url, message)
+                success = await send_webhook_message(config.url, message)
                 if success:
                     pushed += len(favorites)
                     logger.info(f"定时推送 {len(favorites)} 篇收藏文章")
@@ -66,7 +67,7 @@ def webhook_push_task():
             if filtered:
                 articles = [{"title": a.title, "link": a.link} for a in filtered]
                 message = build_favorites_webhook_message(articles, config.platform)
-                success = send_webhook_message(config.url, message)
+                success = await send_webhook_message(config.url, message)
                 if success:
                     pushed += len(filtered)
                     logger.info(f"定时推送 {len(filtered)} 篇过滤文章")

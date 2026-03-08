@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Index
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.database import Base
 
@@ -24,6 +25,7 @@ class Article(Base):
     
     # 处理状态
     is_filtered = Column(Boolean, default=False, comment="是否被关键词过滤")
+    is_ai_filtered = Column(Boolean, default=False, comment="是否被 AI 过滤")
     has_summary = Column(Boolean, default=False, comment="是否已生成 AI 总结")
     summary = Column(Text, nullable=True, comment="AI 生成的摘要（100 字以内）")
     is_read = Column(Boolean, default=False, comment="是否已阅读")
@@ -34,9 +36,14 @@ class Article(Base):
     created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
     
-    # 索引：加速常用查询
+    # 关系定义
+    source = relationship("RSSSource", back_populates="articles")
+    
+    # 复合索引：优化常用查询性能
     __table_args__ = (
-        # 复合索引：按源和发布时间排序
+        Index('idx_source_published', 'source_id', 'published_at'),  # 按源和时间排序
+        Index('idx_filtered_read', 'is_filtered', 'is_read'),  # 过滤和已读状态
+        Index('idx_source_filtered', 'source_id', 'is_filtered'),  # 按源和过滤状态
         {"sqlite_autoincrement": True},
     )
     

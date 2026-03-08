@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.database import Base
 
@@ -19,6 +20,9 @@ class RSSSource(Base):
     fetch_error_count = Column(Integer, default=0, comment="连续抓取失败次数")
     created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+    
+    # 关系定义
+    articles = relationship("Article", back_populates="source", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<RSSSource(id={self.id}, name='{self.name}', url='{self.url}')>"
