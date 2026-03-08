@@ -1,6 +1,9 @@
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
+*.pyc
+*.pyo
 *$py.class
 *.so
 .Python
@@ -24,9 +27,13 @@ env/
 # Database
 *.db
 *.sqlite
+*.sqlite3
+*.db-journal
+data/*.db
 
 # Logs
 *.log
+server*.log
 
 # Environment
 .env
