@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Briefly - 配置</title>
+    <title>Briefly - 配置中心</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/ui.css">
     <style>
         .loading-spinner {
             border: 3px solid #f3f3f3;
@@ -45,33 +46,58 @@
         }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-    <!-- 顶部导航 -->
-    <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <a href="index.html" class="text-2xl font-bold text-gray-900 hover:text-blue-600">
-                        ← Briefly
-                    </a>
-                    <span class="ml-4 text-lg text-gray-600">配置</span>
-                </div>
-                <div class="flex items-center space-x-4">
-                    <button onclick="saveAll()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
-                        保存更改
-                    </button>
-                </div>
+<body class="briefly-config">
+    <nav class="topbar">
+        <div class="topbar-shell">
+            <div class="brand-lockup">
+                <a href="index.html" class="brand-mark">Briefly</a>
+                <div class="brand-caption">配置中心: 源、过滤、任务与推送</div>
+            </div>
+            <div class="topbar-actions">
+                <a href="index.html" class="ghost-link">返回阅读页</a>
+                <button onclick="saveAll()" class="solid-button">保存状态</button>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <main class="page-shell">
+        <section class="hero-card">
+            <div class="hero-heading">
+                <span class="eyebrow">Control Center</span>
+                <h1 class="hero-title">把配置拆成清晰区域，而不是一整页拥挤表单。</h1>
+                <p class="hero-copy">
+                    这里集中管理内容源、过滤策略、调度状态和推送出口。布局优先帮助你判断系统是否可用，以及哪一块配置需要继续调整。
+                </p>
+            </div>
+            <div class="hero-metrics">
+                <div class="metric-tile">
+                    <span class="metric-label">内容入口</span>
+                    <span class="metric-value">RSS 源</span>
+                </div>
+                <div class="metric-tile">
+                    <span class="metric-label">过滤规则</span>
+                    <span class="metric-value">关键词</span>
+                </div>
+                <div class="metric-tile">
+                    <span class="metric-label">自动动作</span>
+                    <span class="metric-value">调度 / 推送</span>
+                </div>
+                <div class="metric-tile">
+                    <span class="metric-label">调试入口</span>
+                    <span class="metric-value">手动执行</span>
+                </div>
+            </div>
+        </section>
+
+        <div class="control-layout" style="margin-top: 22px;">
             <!-- RSS 源管理 -->
-            <div class="bg-white rounded-lg shadow-sm p-4">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-bold text-gray-900">RSS 源管理</h2>
-                    <button onclick="showAddSourceModal()" class="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+            <div class="control-panel span-5">
+                <div class="panel-header">
+                    <div>
+                        <h2 class="section-title">RSS 源</h2>
+                        <p class="section-copy">管理订阅入口，确定什么内容会进入系统。</p>
+                    </div>
+                    <button onclick="showAddSourceModal()" class="soft-button">
                         添加源
                     </button>
                 </div>
@@ -83,28 +109,30 @@
             </div>
 
             <!-- 关键词管理 -->
-            <div class="bg-white rounded-lg shadow-sm p-4">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-bold text-gray-900">关键词过滤</h2>
-                    <button onclick="showAddKeywordModal()" class="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+            <div class="control-panel span-7">
+                <div class="panel-header">
+                    <div>
+                        <h2 class="section-title">关键词过滤</h2>
+                        <p class="section-copy">提前屏蔽不想看的主题，让默认列表更干净。</p>
+                    </div>
+                    <button onclick="showAddKeywordModal()" class="soft-button">
                         添加关键词
                     </button>
                 </div>
-                
-                <p class="text-xs text-gray-500 mb-3">
-                    设置关键词后，包含任一关键词的文章将被标记为「已过滤」，不会出现在默认文章列表中。
-                </p>
                 
                 <!-- 关键词列表 -->
                 <div id="keywords-list" class="space-y-2">
                     <!-- 初始为空，加载后动态更新 -->
                 </div>
             </div>
-        </div>
-
         <!-- 系统状态 -->
-        <div class="mt-6 bg-white rounded-lg shadow-sm p-4">
-            <h2 class="text-lg font-bold text-gray-900 mb-4">系统状态</h2>
+        <div class="control-panel span-12">
+            <div class="panel-header">
+                <div>
+                    <h2 class="section-title">系统状态</h2>
+                    <p class="section-copy">用卡片快速确认调度器、AI 和推送是否处于可用状态。</p>
+                </div>
+            </div>
             
             <div id="system-status" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <!-- 初始为空，加载后动态更新 -->
@@ -112,23 +140,28 @@
         </div>
 
         <!-- 手动操作 -->
-        <div class="mt-6 bg-white rounded-lg shadow-sm p-4">
-            <h2 class="text-lg font-bold text-gray-900 mb-4">手动操作</h2>
+        <div class="control-panel span-5">
+            <div class="panel-header">
+                <div>
+                    <h2 class="section-title">手动操作</h2>
+                    <p class="section-copy">适合临时补抓、补过滤、补摘要，或者跑完整链路。</p>
+                </div>
+            </div>
             
-            <div class="flex flex-wrap gap-3">
-                <button onclick="triggerFetch()" class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+            <div class="action-stack">
+                <button onclick="triggerFetch()" class="solid-button action-button">
                     立即抓取 RSS
                 </button>
-                <button onclick="applyKeywordFilter()" class="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors">
+                <button onclick="applyKeywordFilter()" class="soft-button action-button">
                     应用关键词过滤
                 </button>
-                <button onclick="triggerSummarize()" class="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                <button onclick="triggerSummarize()" class="soft-button action-button">
                     立即生成摘要
                 </button>
-                <button onclick="runFullPipeline()" class="px-4 py-2 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors">
+                <button onclick="runFullPipeline()" class="solid-button action-button">
                     运行完整流程
                 </button>
-                <button onclick="testAI()" class="px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">
+                <button onclick="testAI()" class="soft-button action-button">
                     测试 AI 功能
                 </button>
             </div>
@@ -139,33 +172,32 @@
         </div>
         
         <!-- Webhook 配置 -->
-        <div class="mt-6 bg-white rounded-lg shadow-sm p-4">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-lg font-bold text-gray-900">Webhook 推送配置</h2>
+        <div class="control-panel span-7">
+            <div class="panel-header">
+                <div>
+                    <h2 class="section-title">Webhook 推送</h2>
+                    <p class="section-copy">把收藏或过滤后的内容送到企业微信、钉钉、飞书。</p>
+                </div>
                 <div class="flex items-center space-x-2">
                     <span id="webhook-status" class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">未配置</span>
                 </div>
             </div>
             
-            <p class="text-xs text-gray-500 mb-4">
-                配置 Webhook 后，可以将文章推送到企业微信、钉钉、飞书等平台。
-            </p>
-            
             <form id="webhook-form" onsubmit="saveWebhookConfig(event)" class="space-y-4">
-                <div class="flex items-center">
+                <div class="toggle-row">
                     <input type="checkbox" id="webhook-enabled" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-                    <label for="webhook-enabled" class="ml-2 block text-sm text-gray-700">启用 Webhook 推送</label>
+                    <label for="webhook-enabled" class="field-label">启用 Webhook 推送</label>
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">配置名称</label>
+                    <label class="field-label">配置名称</label>
                     <input type="text" id="webhook-name" 
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="例如：我的飞书机器人">
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">推送平台</label>
+                    <label class="field-label">推送平台</label>
                     <select id="webhook-platform" 
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         onchange="updatePlatformHelp()">
@@ -176,40 +208,40 @@
                         <option value="feishu-card">飞书（卡片版）</option>
                         <option value="feishu-flow">飞书 Flow</option>
                     </select>
-                    <p id="platform-help" class="mt-1 text-xs text-gray-500">
+                    <p id="platform-help" class="field-help">
                         选择对应的推送平台以获得最佳消息格式支持
                     </p>
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Webhook URL</label>
+                    <label class="field-label">Webhook URL</label>
                     <input type="url" id="webhook-url" 
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx">
-                    <p class="mt-1 text-xs text-gray-500">
+                    <p class="field-help">
                         在飞书/企业微信/钉钉中创建自定义机器人获取 Webhook URL
                     </p>
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">描述（可选）</label>
+                    <label class="field-label">描述（可选）</label>
                     <textarea id="webhook-description" rows="2"
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="描述这个 Webhook 配置的用途..."></textarea>
                 </div>
                 
                 <!-- 定时推送配置 -->
-                <div class="mt-4 pt-4 border-t border-gray-200">
-                    <h3 class="text-sm font-bold text-gray-900 mb-3">定时推送设置</h3>
+                <div class="subsection-block">
+                    <h3 class="subsection-title">定时推送设置</h3>
                     
-                    <div class="flex items-center mb-3">
+                    <div class="toggle-row" style="margin-bottom: 12px;">
                         <input type="checkbox" id="schedule-enabled" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-                        <label for="schedule-enabled" class="ml-2 block text-sm text-gray-700">启用定时推送</label>
+                        <label for="schedule-enabled" class="field-label">启用定时推送</label>
                     </div>
                     
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="schedule-options">
                         <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">推送频率</label>
+                            <label class="field-label compact-label">推送频率</label>
                             <select id="schedule-frequency" 
                                 class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
                                 <option value="hourly">每小时</option>
@@ -220,14 +252,14 @@
                         </div>
                         
                         <div id="schedule-time-container">
-                            <label class="block text-xs font-medium text-gray-700 mb-1">推送时间</label>
+                            <label class="field-label compact-label">推送时间</label>
                             <input type="time" id="schedule-time" 
                                 class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                                 value="09:00">
                         </div>
                         
                         <div id="schedule-day-of-week-container" class="hidden">
-                            <label class="block text-xs font-medium text-gray-700 mb-1">星期</label>
+                            <label class="field-label compact-label">星期</label>
                             <select id="schedule-day-of-week" 
                                 class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
                                 <option value="1">周一</option>
@@ -241,39 +273,40 @@
                         </div>
                         
                         <div id="schedule-day-of-month-container" class="hidden">
-                            <label class="block text-xs font-medium text-gray-700 mb-1">日期</label>
+                            <label class="field-label compact-label">日期</label>
                             <select id="schedule-day-of-month" 
                                 class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
                             </select>
                         </div>
                     </div>
                     
-                    <div class="mt-3 space-y-2">
-                        <div class="flex items-center">
+                    <div class="toggle-group">
+                        <div class="toggle-row">
                             <input type="checkbox" id="push-favorites" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-                            <label for="push-favorites" class="ml-2 block text-sm text-gray-700">推送收藏文章</label>
+                            <label for="push-favorites" class="field-label">推送收藏文章</label>
                         </div>
-                        <div class="flex items-center">
+                        <div class="toggle-row">
                             <input type="checkbox" id="push-filtered" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-                            <label for="push-filtered" class="ml-2 block text-sm text-gray-700">推送过滤文章</label>
+                            <label for="push-filtered" class="field-label">推送过滤文章</label>
                         </div>
                     </div>
                 </div>
                 
                 <div id="webhook-message" class="text-sm hidden"></div>
                 
-                <div class="flex flex-wrap gap-3 pt-2">
-                    <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                <div class="action-stack">
+                    <button type="submit" class="solid-button action-button">
                         保存配置
                     </button>
-                    <button type="button" onclick="testWebhook()" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                    <button type="button" onclick="testWebhook()" class="soft-button action-button">
                         测试连接
                     </button>
-                    <button type="button" onclick="pushAllFavorites()" class="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors">
-                        推送收藏文章
+                    <button type="button" onclick="pushArticles()" class="soft-button action-button">
+                        推送文章
                     </button>
                 </div>
             </form>
+        </div>
         </div>
     </main>
 
@@ -373,6 +406,8 @@
             localStorage.setItem('briefly-config-update', Date.now().toString());
             // 更新抓取时间戳
             localStorage.setItem('briefly-last-fetch', '0');
+            // 设置关键词变化标记，强制刷新过滤栏
+            localStorage.setItem('briefly-keyword-changed', Date.now().toString());
         }
 
         // 页面加载时初始化
@@ -698,6 +733,13 @@
                 loadSystemStatus();
                 notifyConfigChange('keywordChanged');
                 showToast('关键词已删除', 'success');
+                
+                // 删除关键词后重新应用过滤
+                api.applyKeywordFilter().then(filterResult => {
+                    showToast(`已重新过滤 ${filterResult.filtered_count} 篇文章`, 'info');
+                    loadKeywords();
+                    loadSystemStatus();
+                }).catch(() => {});
             } catch (error) {
                 console.error('删除失败:', error);
                 showToast('删除失败: ' + (error.message || '未知错误'), 'error');
@@ -946,12 +988,12 @@
         }
     }
     
-    // 推送所有收藏文章
-    async function pushAllFavorites() {
-        showToast('正在推送收藏文章...', 'info');
+    // 推送文章（根据配置中的勾选项）
+    async function pushArticles() {
+        showToast('正在推送文章...', 'info');
         
         try {
-            const result = await api.pushFavorites();
+            const result = await api.pushArticles();
             showToast(result.message, result.success ? 'success' : 'error');
         } catch (error) {
             showToast('推送失败: ' + (error.message || '未知错误'), 'error');

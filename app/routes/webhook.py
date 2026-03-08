@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 
 
 class WebhookConfigResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     """Webhook 配置响应模型"""
     id: int
     enabled: bool
@@ -33,10 +34,6 @@ class WebhookConfigResponse(BaseModel):
     push_favorites: bool
     push_filtered: bool
     
-    class Config:
-        from_attributes = True
-
-
 class WebhookConfigUpdate(BaseModel):
     """Webhook 配置更新模型"""
     enabled: Optional[bool] = None
@@ -174,7 +171,7 @@ async def test_webhook_config(
         }
     
     try:
-        result = webhook_service.send_webhook_notification(
+        result = await webhook_service.send_webhook_notification(
             title="Briefly 测试通知",
             content="这是一条测试通知，用于验证 Webhook 配置是否正确。如果收到此消息，说明配置成功！",
             webhook_url=target_url,
@@ -198,6 +195,17 @@ async def test_webhook_config(
             "success": False,
             "message": f"推送异常: {str(e)}"
         }
+
+
+def _check_webhook_config(config) -> None | dict:
+    """Check if webhook is properly configured. Returns error dict if not, None if OK."""
+    if not config.enabled or not config.url:
+        return {
+            "success": False,
+            "message": "Webhook 未启用或 URL 未配置"
+        }
+    return None
+
 
 
 @router.post("/push-favorites")
@@ -235,7 +243,7 @@ async def push_favorites(
     try:
         message = webhook_service.build_favorites_webhook_message(articles, config.platform)
         
-        success = webhook_service.send_webhook_message(config.url, message)
+        success = await webhook_service.send_webhook_message(config.url, message)
         
         return {
             "success": success,
@@ -284,7 +292,7 @@ async def push_filtered(
     try:
         message = webhook_service.build_favorites_webhook_message(articles, config.platform)
         
-        success = webhook_service.send_webhook_message(config.url, message)
+        success = await webhook_service.send_webhook_message(config.url, message)
         
         return {
             "success": success,
@@ -293,6 +301,92 @@ async def push_filtered(
         
     except webhook_service.WebhookError as e:
         logger.error(f"过滤文章推送失败: {str(e)}")
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
+
+@router.post("/push")
+async def push_articles(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    推送文章（根据配置中的勾选项）
+    
+    如果 push_favorites 为 True，推送收藏文章
+    如果 push_filtered 为 True，推送过滤文章
+    
+    Returns:
+        推送结果
+    """
+    config = await get_or_create_webhook_config(db)
+    
+    if not config.enabled or not config.url:
+        return {
+            "success": False,
+            "message": "Webhook 未启用或 URL 未配置"
+        }
+    
+    articles_to_push = []
+    favorites_count = 0
+    filtered_count = 0
+    
+    # 收集收藏文章
+    if config.push_favorites:
+        result = await db.execute(
+            select(Article).where(Article.is_favorite == True).order_by(Article.published_at.desc())
+        )
+        favorites = result.scalars().all()
+        for a in favorites:
+            articles_to_push.append({"title": a.title, "link": a.link, "type": "收藏"})
+        favorites_count = len(favorites)
+    
+    # 收集过滤文章
+    if config.push_filtered:
+        result = await db.execute(
+            select(Article).where(Article.is_filtered == True).order_by(Article.published_at.desc())
+        )
+        filtered = result.scalars().all()
+        for a in filtered:
+            # 避免重复添加（如果文章同时是收藏和过滤）
+            if not any(article["link"] == a.link for article in articles_to_push):
+                articles_to_push.append({"title": a.title, "link": a.link, "type": "过滤"})
+        filtered_count = len(filtered)
+    
+    if not articles_to_push:
+        return {
+            "success": False,
+            "message": "没有可推送的文章（请检查推送配置）"
+        }
+    
+    # 构建推送消息（移除 type 字段）
+    push_data = [{"title": a["title"], "link": a["link"]} for a in articles_to_push]
+    
+    try:
+        message = webhook_service.build_favorites_webhook_message(push_data, config.platform)
+        
+        success = await webhook_service.send_webhook_message(config.url, message)
+        
+        # 构建结果消息
+        parts = []
+        if favorites_count > 0:
+            parts.append(f"{favorites_count} 篇收藏文章")
+        if filtered_count > 0:
+            parts.append(f"{filtered_count} 篇过滤文章")
+        
+        result_msg = f"成功推送 {' + '.join(parts)}" if success else "推送失败"
+        
+        return {
+            "success": success,
+            "message": result_msg,
+            "total_count": len(articles_to_push),
+            "favorites_count": favorites_count,
+            "filtered_count": filtered_count
+        }
+        
+    except webhook_service.WebhookError as e:
+        logger.error(f"文章推送失败: {str(e)}")
         return {
             "success": False,
             "message": str(e)

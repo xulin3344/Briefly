@@ -1,6 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 
@@ -21,6 +21,8 @@ class KeywordUpdate(BaseModel):
 
 
 class KeywordResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     keyword: str
     enabled: bool
@@ -28,10 +30,6 @@ class KeywordResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     
-    class Config:
-        from_attributes = True
-
-
 class KeywordTestResponse(BaseModel):
     keyword: str
     text: str

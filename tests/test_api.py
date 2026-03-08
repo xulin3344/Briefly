@@ -4,6 +4,11 @@ Briefly RSS 聚合器 - API 测试
 import pytest
 from fastapi.testclient import TestClient
 import os
+import asyncio
+import sys
+from unittest.mock import AsyncMock, patch
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 设置测试环境
 os.environ["TESTING"] = "1"
@@ -23,7 +28,18 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
+        assert data["database"] == "connected"
         assert "database" in data
+
+    def test_health_check_reports_database_failure(self, client):
+        with patch(
+            "app.routes.system.AsyncSession.execute",
+            new=AsyncMock(side_effect=RuntimeError("db down")),
+        ):
+            response = client.get("/api/health")
+
+        assert response.status_code == 503
+        assert response.json()["message"]
 
 
 class TestStatusEndpoint:
@@ -35,6 +51,27 @@ class TestStatusEndpoint:
         assert "database" in data
         assert "scheduler" in data
         assert "ai_configured" in data
+
+    def test_get_status_uses_database_ai_settings(self, client):
+        from app.models import AISettings, AsyncSessionLocal
+
+        async def seed_ai_settings():
+            async with AsyncSessionLocal() as db:
+                settings_row = await db.get(AISettings, 1)
+                if settings_row is None:
+                    settings_row = AISettings(id=1)
+                    db.add(settings_row)
+
+                # Plaintext keeps the test independent from environment-specific keys.
+                settings_row.api_key = "plain-test-key"
+                await db.commit()
+
+        asyncio.run(seed_ai_settings())
+
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ai_configured"] is True
 
 
 class TestRSSSourcesAPI:

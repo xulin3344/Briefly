@@ -5,11 +5,15 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.config import settings, ZHIPUAI_BASE_URL
-from app.models import Article, AISettings
+from app.config import settings
+from app.models import AISettings, Article, AsyncSessionLocal
 from app.core.logging import get_logger
+from app.core.security import encrypt_api_key, decrypt_api_key, mask_api_key
 
 logger = get_logger(__name__)
+
+# 智谱 AI 默认 Base URL
+ZHIPUAI_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 
 
 class AISummaryError(Exception):
@@ -51,8 +55,10 @@ async def get_ai_settings(db: AsyncSession) -> AISettings:
 async def get_async_ai_client_from_settings(db: AsyncSession) -> tuple[Optional[AsyncOpenAI], AISettings]:
     ai_settings = await get_ai_settings(db)
     
-    api_key = ai_settings.api_key or settings.ZHIPUAI_API_KEY or settings.OPENAI_API_KEY
-    base_url = ai_settings.base_url or ZHIPUAI_BASE_URL
+    # 解密存储的 API Key
+    stored_api_key = decrypt_api_key(ai_settings.api_key) if ai_settings.api_key else None
+    api_key = stored_api_key or settings.ZHIPUAI_API_KEY or settings.OPENAI_API_KEY
+    base_url = ai_settings.base_url or settings.ZHIPUAI_BASE_URL
     
     if not api_key:
         return None, ai_settings
@@ -67,7 +73,7 @@ async def get_async_ai_client_from_settings(db: AsyncSession) -> tuple[Optional[
 
 def get_openai_client() -> Optional[OpenAI]:
     api_key = settings.ZHIPUAI_API_KEY or settings.OPENAI_API_KEY
-    base_url = ZHIPUAI_BASE_URL
+    base_url = settings.ZHIPUAI_BASE_URL
     
     if not api_key:
         return None
@@ -78,11 +84,15 @@ def get_openai_client() -> Optional[OpenAI]:
 async def get_ai_config(db: AsyncSession) -> dict:
     ai_settings = await get_ai_settings(db)
     
+    # 解密 API Key 用于检查是否存在
+    stored_api_key = decrypt_api_key(ai_settings.api_key) if ai_settings.api_key else None
+    has_api_key = bool(stored_api_key or settings.ZHIPUAI_API_KEY or settings.OPENAI_API_KEY)
+    
     return {
         "model": ai_settings.model or settings.AI_MODEL or "glm-4",
         "max_summary_length": ai_settings.max_summary_length or settings.MAX_SUMMARY_LENGTH or 100,
-        "base_url": ai_settings.base_url or ZHIPUAI_BASE_URL,
-        "has_api_key": bool(ai_settings.api_key or settings.ZHIPUAI_API_KEY or settings.OPENAI_API_KEY),
+        "base_url": ai_settings.base_url or settings.ZHIPUAI_BASE_URL,
+        "has_api_key": has_api_key,
         "enabled": ai_settings.enabled
     }
 
@@ -98,7 +108,8 @@ async def save_ai_settings(
     ai_settings = await get_ai_settings(db)
     
     if api_key is not None:
-        ai_settings.api_key = api_key
+        # 加密 API Key 后存储
+        ai_settings.api_key = encrypt_api_key(api_key)
     if base_url is not None:
         ai_settings.base_url = base_url.strip() if base_url.strip() else None
     if model is not None:
@@ -118,8 +129,10 @@ async def save_ai_settings(
 async def validate_api_key(db: AsyncSession) -> tuple[bool, str]:
     ai_settings = await get_ai_settings(db)
     
-    api_key = ai_settings.api_key or settings.ZHIPUAI_API_KEY or settings.OPENAI_API_KEY
-    base_url = ai_settings.base_url or ZHIPUAI_BASE_URL
+    # 解密存储的 API Key
+    stored_api_key = decrypt_api_key(ai_settings.api_key) if ai_settings.api_key else None
+    api_key = stored_api_key or settings.ZHIPUAI_API_KEY or settings.OPENAI_API_KEY
+    base_url = ai_settings.base_url or settings.ZHIPUAI_BASE_URL
     
     if not api_key:
         return False, "API Key 未配置"
@@ -316,15 +329,31 @@ async def summarize_articles_batch(
 
 
 def summarize_article(title: str, content: str) -> Optional[str]:
-    """同步生成文章摘要（向后兼容）"""
+    """
+    同步生成文章摘要（向后兼容）
+    
+    注意：此函数仅供同步代码调用，推荐使用 summarize_article_async 异步版本
+    
+    Args:
+        title: 文章标题
+        content: 文章内容
+        
+    Returns:
+        生成的摘要，失败返回 None
+    """
     import asyncio
     
     async def _summarize():
         async with AsyncSessionLocal() as db:
             return await summarize_article_async(title, content, db)
     
-    loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(_summarize())
-    finally:
-        loop.close()
+        # 使用 asyncio.run() 替代手动事件循环管理
+        return asyncio.run(_summarize())
+    except RuntimeError:
+        # 如果已在事件循环中，使用 nest_asyncio 或抛出更明确的错误
+        logger.warning("summarize_article 在异步上下文中被调用，请使用 summarize_article_async 代替")
+        raise RuntimeError(
+            "不能在异步上下文中调用同步函数 summarize_article。"
+            "请使用异步版本: await summarize_article_async(title, content, db)"
+        )

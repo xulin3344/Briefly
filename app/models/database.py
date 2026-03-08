@@ -1,19 +1,39 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import NullPool, StaticPool
+
 from app.config import settings
 
-# 使用配置文件中的 DATABASE_URL，支持本地开发和 Docker 环境
-async_engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG
-)
+database_url = make_url(settings.DATABASE_URL)
+engine_kwargs = {
+    "echo": settings.DEBUG,
+    "pool_pre_ping": True,
+}
+
+if database_url.drivername.startswith("sqlite"):
+    if database_url.database in (None, "", ":memory:"):
+        engine_kwargs["poolclass"] = StaticPool
+    else:
+        engine_kwargs["poolclass"] = NullPool
+else:
+    engine_kwargs.update(
+        {
+            "pool_size": 10,
+            "max_overflow": 20,
+            "pool_recycle": 3600,
+            "pool_timeout": 30,
+        }
+    )
+
+async_engine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
 
 AsyncSessionLocal = sessionmaker(
     class_=AsyncSession,
     autocommit=False,
     autoflush=False,
     bind=async_engine,
-    expire_on_commit=False
+    expire_on_commit=False,
 )
 
 Base = declarative_base()
@@ -32,6 +52,14 @@ async def get_db():
 
 
 async def init_db():
-    from app.models import article, rss_source, keyword, ai_settings, webhook_config
+    from app.models import (
+        ai_filter_config,
+        ai_settings,
+        article,
+        keyword,
+        rss_source,
+        webhook_config,
+    )
+
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

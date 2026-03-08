@@ -1,7 +1,8 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, HttpUrl
+from sqlalchemy import select
+from pydantic import BaseModel, ConfigDict, HttpUrl
 import logging
 from datetime import datetime
 
@@ -27,6 +28,8 @@ class RSSSourceUpdate(BaseModel):
 
 
 class RSSSourceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     url: str
@@ -36,10 +39,6 @@ class RSSSourceResponse(BaseModel):
     fetch_error_count: int
     created_at: Optional[str] = None
     
-    class Config:
-        from_attributes = True
-
-
 def serialize_source(source: RSSSource) -> dict:
     """序列化 RSS 源对象"""
     def format_datetime(dt):
@@ -62,8 +61,6 @@ async def list_sources(
     enabled: Optional[bool] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    from sqlalchemy import select
-    
     query = select(RSSSource)
     
     if enabled is not None:
@@ -207,7 +204,7 @@ async def fetch_source(source_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="RSS 源不存在")
     
     try:
-        articles = rss_service.fetch_rss_feed(source)
+        articles = await rss_service.fetch_rss_feed(source)
         saved_count = await rss_service.save_articles(db, source_id, articles)
         
         source.last_fetched = datetime.utcnow()
